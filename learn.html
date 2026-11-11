@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Learn to read isiBheqe soHlamvu</title>
+    <meta
+      name="description"
+      content="Six short steps to reading isiBheqe soHlamvu (Ditema tsa Dinoko), with the full chart of consonants and vowels and the script's own names for its parts."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 27 16 6l12 21z' fill='none' stroke='%231f4fd8' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="band beads" aria-hidden="true"></div>
+    <header class="site">
+      <a class="brand" href="./" aria-label="isiBheqe soHlamvu, home">
+        <span id="brand-glyphs" class="brand-glyphs" aria-hidden="true"></span>
+      </a>
+      <nav aria-label="Pages">
+        <a href="./">Write</a>
+        <a href="./learn.html" aria-current="page">Learn</a>
+        <a href="./about.html">About</a>
+      </nav>
+    </header>
+
+    <main class="prose">
+      <div class="intro">
+        <h1>Learn to read it</h1>
+        <p class="lede">
+          Six short steps. The examples are isiZulu, but the same parts write the other siNtu
+          languages of the region. Each step follows the project's own teaching booklet
+          <a href="./about.html#s-booklet" class="cite">[2]</a>.
+        </p>
+      </div>
+
+      <section class="step" aria-labelledby="step-1">
+        <h2 id="step-1"><span class="step-n">1</span> One triangle, one syllable</h2>
+        <p>
+          A syllable is drawn as a single block, an <em lang="zu">ibheqe</em>. Its shape is the
+          vowel: which way the point faces, and whether the far side is closed. The project
+          describes the shapes as mimicking the shape of the mouth
+          <a href="./about.html#s-site" class="cite">[1]</a>.
+        </p>
+        <div class="try">
+          <div id="vowel-picker" class="choices" role="group" aria-label="Choose a vowel"></div>
+          <div id="vowel-specimen" class="specimen" aria-live="polite"></div>
+        </div>
+        <p class="note">
+          isiZulu writes its five vowels with i, a, u and the two closed sideways triangles (its
+          <i>e</i> and <i>o</i>). Languages that tell more vowels apart also use the open
+          sideways shapes.
+        </p>
+      </section>
+
+      <section class="step" aria-labelledby="step-2">
+        <h2 id="step-2"><span class="step-n">2</span> Where a mark sits is where the sound is made</h2>
+        <p>
+          Consonants are drawn onto the vowel. Sounds made with the lips sit at the point of the
+          triangle, sounds made with the tip of the tongue cross its middle, and sounds made at
+          the back of the mouth sit at its base. A straight line is a stop; a curve is a
+          fricative, where the air keeps flowing.
+        </p>
+        <div class="try">
+          <div id="place-picker" class="choices" role="group" aria-label="Choose a consonant"></div>
+          <div id="place-specimen" class="specimen wide" aria-live="polite"></div>
+        </div>
+        <p class="note">
+          The mark keeps its place when the triangle turns, so one small set of marks serves
+          every vowel.
+        </p>
+      </section>
+
+      <section class="step" aria-labelledby="step-3">
+        <h2 id="step-3"><span class="step-n">3</span> A line for voice, a dot for a held breath</h2>
+        <p>
+          A bare stop is said with a puff of air: the bar alone is isiZulu <i>ph</i>. Two small
+          marks change it. A line from point to base adds voice. A dot inside means the puff is
+          held back, as in isiZulu's plain <i>p</i> and its <i>b</i>. Try both.
+        </p>
+        <div class="try">
+          <div class="choices" role="group" aria-label="Voice and breath">
+            <button type="button" id="toggle-line" aria-pressed="false">Line: voiced</button>
+            <button type="button" id="toggle-dot" aria-pressed="false">Dot: no puff of air</button>
+          </div>
+          <div id="voice-specimen" class="specimen" aria-live="polite"></div>
+        </div>
+        <p class="note">
+          The same two marks turn <i>th</i> into <i>t</i> and <i>d</i>, and <i>kh</i> into
+          <i>k</i> and <i>g</i>.
+        </p>
+      </section>
+
+      <section class="step" aria-labelledby="step-4">
+        <h2 id="step-4"><span class="step-n">4</span> A circle for the nose</h2>
+        <p>
+          A small circle on the point is a nasal. Alone it is <i>m</i>; a line or cross inside it
+          makes <i>n</i>, <i>ny</i> and <i>ng</i>. Set on top of another consonant, the plain
+          circle means that consonant starts through the nose, as in <i>mb</i> or <i>nz</i>. A
+          nasal that is a whole syllable, like the <i>m</i> in <i>umfana</i>, fills the block as
+          one large circle.
+        </p>
+        <div class="examples" data-zulu="ma na nya mba nza m'"></div>
+      </section>
+
+      <section class="step" aria-labelledby="step-5">
+        <h2 id="step-5"><span class="step-n">5</span> Clicks</h2>
+        <p>
+          The three clicks are drawn as an hourglass open at the bottom. They take the same
+          marks as other consonants: bare has a puff of air (<i>ch</i>), a dot is plain (<i>c</i>), a
+          line is voiced (<i>gc</i>), a circle is nasal (<i>nc</i>).
+        </p>
+        <div class="examples" data-zulu="cha ca gca nca qa xa"></div>
+      </section>
+
+      <section class="step" aria-labelledby="step-6">
+        <h2 id="step-6"><span class="step-n">6</span> Read a line</h2>
+        <p>
+          This is how the project describes itself in isiZulu. Its site gives the English as
+          “a writing system for southern african languages”
+          <a href="./about.html#s-site" class="cite">[1]</a>. Read it block by block.
+        </p>
+        <div class="examples line" data-zulu="uhlelo lokuloba amazwi ezilimi zesintu"></div>
+        <label for="try-text">Now try a word of your own</label>
+        <input id="try-text" type="text" value="ngiyabonga" spellcheck="false" autocapitalize="off" />
+        <div id="try-out" class="examples line" aria-live="polite"></div>
+        <p><a class="button" href="./">Go and write</a></p>
+      </section>
+
+      <section class="chart" aria-labelledby="chart-title">
+        <h2 id="chart-title">The whole chart</h2>
+        <p>
+          Every consonant on every vowel, drawn on the construction frame of the 2015 keyboard
+          specification <a href="./about.html#s-spec" class="cite">[4]</a>. Row labels are
+          phonetic symbols.
+        </p>
+        <div class="table-scroll" tabindex="0" role="region" aria-labelledby="chart-title">
+          <table id="chart-table"></table>
+        </div>
+      </section>
+
+      <section aria-labelledby="terms-title">
+        <h2 id="terms-title">Words for the parts</h2>
+        <p>
+          The script has its own vocabulary. The first group comes from the project's site and
+          booklet. The second comes from Wikipedia and has not been checked against a primary
+          source. English glosses in brackets are ordinary dictionary senses added here, and
+          corrections are welcome.
+        </p>
+        <h3>From the project <a href="./about.html#s-site" class="cite">[1]</a> <a href="./about.html#s-booklet" class="cite">[2]</a></h3>
+        <dl class="terms">
+          <div><dt lang="zu">izimpawu zesintu</dt><dd>The traditional symbols of the region that the script is drawn from.</dd></div>
+          <div><dt lang="zu">onkamisa</dt><dd>The vowels.</dd></div>
+          <div><dt lang="zu">ongwaqa</dt><dd>The consonants.</dd></div>
+          <div><dt lang="zu">ingungu</dt><dd>The nasal circle. The booklet shows it beside a drum.</dd></div>
+          <div><dt lang="zu">intombi</dt><dd>The triangle pointing up [young woman].</dd></div>
+          <div><dt lang="zu">insizwa</dt><dd>The triangle pointing down [young man]. Wikipedia calls this shape <i lang="zu">isoka</i>.</dd></div>
+          <div><dt lang="zu">indoda</dt><dd>Two triangles meeting at their points, an hourglass [man].</dd></div>
+          <div><dt lang="zu">umfazi</dt><dd>Two triangles joined at their bases, a diamond [woman].</dd></div>
+          <div><dt lang="zu">imibala</dt><dd>Colours.</dd></div>
+        </dl>
+        <h3>From Wikipedia <a href="./about.html#s-wikipedia" class="cite">[7]</a></h3>
+        <dl class="terms">
+          <div><dt lang="zu">ibheqe, amabheqe</dt><dd>A syllable block, and the plural. Also the isiZulu name for beadwork.</dd></div>
+          <div><dt lang="zu">uphimbo</dt><dd>The voicing line, from point to base.</dd></div>
+          <div><dt lang="st">lerothodi</dt><dd>The dot inside the triangle.</dd></div>
+          <div><dt lang="zu">ingungwana</dt><dd>The circle touching the point.</dd></div>
+          <div><dt lang="zu">ingungwanyana</dt><dd>A solid dot at the point that marks a nasal vowel.</dd></div>
+          <div><dt lang="zu">amaqanda</dt><dd>The syllabic nasals, circles that fill the whole block.</dd></div>
+          <div><dt lang="zu">umkhonto</dt><dd>The open shape pointing up, the vowel u.</dd></div>
+          <div><dt lang="zu">iphambili, imuva</dt><dd>The closed triangles pointing left and right.</dd></div>
+          <div><dt lang="st">motsutswa, motsutsena</dt><dd>The open shapes pointing left and right.</dd></div>
+          <div><dt lang="zu">usontandane</dt><dd>An open shape pointing down, for a consonant with no vowel. This tool does not draw it yet.</dd></div>
+        </dl>
+      </section>
+    </main>
+
+    <div class="band engraved" aria-hidden="true"></div>
+    <footer>
+      <p>
+        Found a mistake? <a href="./about.html#corrections">Corrections are welcome</a>.
+        <a href="./about.html#sources">Sources</a>.
+      </p>
+    </footer>
+
+    <script type="module" src="/src/pages/learn.ts"></script>
+  </body>
+</html>

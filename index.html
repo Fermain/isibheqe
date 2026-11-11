@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>isiBheqe soHlamvu · Ditema tsa Dinoko</title>
+    <meta
+      name="description"
+      content="Write in isiBheqe soHlamvu (Ditema tsa Dinoko), the featural syllabary for the siNtu languages of southern Africa. Type isiZulu or build syllables sound by sound."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 27 16 6l12 21z' fill='none' stroke='%231f4fd8' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="band beads" aria-hidden="true"></div>
+    <header class="site">
+      <a class="brand" href="./" aria-label="isiBheqe soHlamvu, home">
+        <span id="brand-glyphs" class="brand-glyphs" aria-hidden="true"></span>
+      </a>
+      <nav aria-label="Pages">
+        <a href="./" aria-current="page">Write</a>
+        <a href="./learn.html">Learn</a>
+        <a href="./about.html">About</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="intro">
+        <h1>
+          <span lang="zu">isiBheqe soHlamvu</span>
+          <span class="alt" lang="st">Ditema tsa Dinoko</span>
+        </h1>
+        <p class="lede">
+          Every triangle is one syllable. Type below to write.
+          <a href="./learn.html">Learn to read it in six steps.</a>
+        </p>
+      </div>
+
+      <section class="write" aria-labelledby="write-title">
+        <h2 id="write-title" class="sr-only">Write</h2>
+
+        <div class="stage">
+          <figure id="surface" class="surface" aria-live="polite"></figure>
+
+          <div class="actions">
+            <label class="check">
+              <input type="checkbox" id="show-gloss" checked /> Show reading
+            </label>
+            <div id="colour-tools" class="colour-tools" role="group" aria-label="Colour">
+              <span class="tool-label" aria-hidden="true">Colour</span>
+              <div id="palette" class="palette"></div>
+              <input
+                type="color"
+                id="custom-colour"
+                value="#7a3fc4"
+                aria-label="Paint with a colour of your own"
+              />
+              <button type="button" data-brush="erase" aria-pressed="false">Eraser</button>
+              <button type="button" id="clear-colours">Clear colours</button>
+            </div>
+            <div class="save">
+              <button type="button" id="export-svg">Save SVG</button>
+              <button type="button" id="export-png">Save PNG</button>
+              <button type="button" id="copy-svg">Copy SVG</button>
+            </div>
+          </div>
+          <p id="paint-hint" class="note" hidden>
+            Choose any enclosed part of a glyph to fill it. Colour is for art only and does not
+            change what the text says. Choose the colour again to stop painting.
+          </p>
+          <p id="status" class="status" role="status"></p>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="How to write">
+          <button type="button" role="tab" id="tab-text" aria-controls="panel-text">
+            Type isiZulu
+          </button>
+          <button type="button" role="tab" id="tab-sound" aria-controls="panel-sound">
+            Build by sound
+          </button>
+        </div>
+
+        <div id="panel-text" class="panel" role="tabpanel" aria-labelledby="tab-text">
+          <label for="latin">isiZulu in ordinary spelling</label>
+          <textarea id="latin" rows="3" spellcheck="false" autocapitalize="off"></textarea>
+          <p id="unread" class="warning" hidden></p>
+          <p class="note">
+            Punctuation is left out for now. Write <kbd>m'</kbd> or <kbd>n'</kbd> for a nasal that
+            is a syllable by itself. For other languages, or to adjust a syllable by hand,
+            <button type="button" id="continue-by-sound" class="link">
+              continue on the sound keyboard</button
+            >.
+          </p>
+        </div>
+
+        <div id="panel-sound" class="panel" role="tabpanel" aria-labelledby="tab-sound" hidden>
+          <div class="editing">
+            <button type="button" data-press="space">Space</button>
+            <button type="button" data-press="newline">New line</button>
+            <button type="button" data-press="backspace">Undo</button>
+            <button type="button" data-press="clear">Clear</button>
+          </div>
+          <p id="vowel-first" class="note">
+            Choose a vowel first. Consonant marks are drawn onto the vowel's triangle.
+          </p>
+          <div id="keyboard" class="keyboard"></div>
+          <p class="note">
+            The small letters are keyboard shortcuts, the same ones as the original 2015 tool.
+            Pressing a consonant mark again removes it.
+          </p>
+        </div>
+
+        <section
+          id="anatomy"
+          class="anatomy"
+          aria-label="Inside the chosen glyph"
+          hidden
+        ></section>
+
+        <details class="legacy">
+          <summary>Open or save text in the 2015 tool's format</summary>
+          <label for="json">Text saved from the original keyboard loads here unchanged.</label>
+          <textarea id="json" rows="4" spellcheck="false"></textarea>
+          <button type="button" id="load-json">Load</button>
+          <p id="json-error" class="warning" hidden></p>
+        </details>
+      </section>
+    </main>
+
+    <div class="band engraved" aria-hidden="true"></div>
+    <footer>
+      <p>
+        A free tool for a living script. The forms belong to the isiBheqe soHlamvu project; the
+        original keyboard is by Baruch Lubinsky. <a href="./about.html">Credits and sources</a>.
+        No tracking, no accounts.
+      </p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
