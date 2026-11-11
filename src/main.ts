@@ -433,10 +433,22 @@ function exportSvg(scale = 1): string | undefined {
   });
 }
 
+/** A file name made from what is written: letters and digits kept, the rest turned into hyphens. */
+function fileName(): string {
+  const name = reading(tokens())
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/, '');
+  return name || 'isibheqe';
+}
+
 function download(blob: Blob, extension: string): void {
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `isibheqe.${extension}`;
+  link.download = `${fileName()}.${extension}`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
