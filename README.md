@@ -6,6 +6,10 @@ vowel, and the marks drawn on it give the consonant.
 
 The script is not yet in Unicode, so this tool draws it as an image (SVG or PNG).
 
+Live at <https://isibheqe.ferma.in/>. This is an independent edition of Baruch Lubinsky's 2015
+keyboard. It is not run or endorsed by the isiBheqe soHlamvu project; the offer to hand it
+over to the project stands.
+
 ## What it does
 
 - **Type isiZulu** in ordinary spelling and see it written in isiBheqe.

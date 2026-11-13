@@ -5,6 +5,7 @@
   "description": "A keyboard for isiBheqe soHlamvu / Ditema tsa Dinoko, the featural syllabary for the siNtu languages of southern Africa.",
   "license": "CC-BY-NC-SA-4.0",
   "type": "module",
+  "packageManager": "pnpm@10.15.1",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
