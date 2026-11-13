@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex" />
+    <title>Social preview card</title>
+    <!--
+      The source of public/og.png, the picture shown when the site is shared.
+      It is not part of the built site. To remake the picture, run the dev server,
+      open /og.html in a window 1200 by 630 pixels, and save a screenshot as public/og.png.
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #f7f4ec;
+        color: #121110;
+      }
+      .card {
+        --ink: #121110;
+        --red: #d62f23;
+        --blue: #2f62f0;
+        --sun: #f6c026;
+        --groove: #8a8272;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        height: 630px;
+      }
+      .beads svg,
+      .engraved svg {
+        display: block;
+      }
+      .middle {
+        display: grid;
+        align-content: center;
+        gap: 34px;
+        padding-inline: 72px;
+      }
+      #name svg {
+        display: block;
+        height: 190px;
+        width: auto;
+        stroke-width: 1.1;
+      }
+      h1 {
+        margin: 0;
+        font: 800 68px/1 'Bricolage Grotesque', sans-serif;
+        letter-spacing: -0.02em;
+      }
+      h1 span {
+        color: #cf2a1f;
+        margin-left: 0.3em;
+      }
+      p {
+        margin: 0;
+        font: 700 22px/1 'Bricolage Grotesque', sans-serif;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #5e5950;
+      }
+      .engraved {
+        height: 48px;
+        overflow: hidden;
+        border-top: 2px solid #121110;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div id="beads" class="beads"></div>
+      <div class="middle">
+        <div id="name"></div>
+        <h1>isiBheqe soHlamvu <span>Ditema tsa Dinoko</span></h1>
+        <p>Every triangle is one syllable · isibheqe.ferma.in</p>
+      </div>
+      <div id="engraved" class="engraved"></div>
+    </div>
+    <script type="module">
+      import './src/style.css';
+      import { renderSvg } from './src/core/svg';
+      import { layout } from './src/core/text';
+      import { transcribeZulu } from './src/input/zulu';
+      import { beadBand, engravedBand } from './src/ornament';
+
+      document.getElementById('beads').innerHTML = beadBand(60);
+      document.getElementById('engraved').innerHTML = engravedBand();
+      document.getElementById('name').innerHTML = renderSvg(
+        layout(transcribeZulu('isibheqe sohlamvu').tokens, 4),
+        { unit: 4 },
+      );
+    </script>
+  </body>
+</html>
