@@ -55,10 +55,26 @@ describe('tessellated layout', () => {
         for (const p of points) {
           expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
           expect(p.x).toBeGreaterThanOrEqual(g.at.x - 0.5);
-          expect(p.x).toBeLessThanOrEqual(g.at.x + BASE * 3 + 0.5);
+          expect(p.x).toBeLessThanOrEqual(g.at.x + g.advance + 0.5);
         }
       }
     }
+  });
+
+  it('draws a glyph that stands alone at its designed size', () => {
+    const { tokens } = transcribeZulu('na');
+    const [alone] = tessellate(tokens, 3).glyphs;
+    const [designed] = layout(tokens, 3).glyphs;
+    const height = (g: typeof alone) => Math.abs(g.frame.apex.y - g.frame.origin.y);
+    expect(height(alone)).toBeCloseTo(height(designed));
+  });
+
+  it('sets the squares of a word closer together than two words', () => {
+    const gap = (text: string) => {
+      const [a, b] = tessellate(transcribeZulu(text).tokens, 3).glyphs;
+      return b.at.x - (a.at.x + a.advance);
+    };
+    expect(gap('sika')).toBeLessThan(gap('si ka') / 4);
   });
 
   it('wraps whole words', () => {

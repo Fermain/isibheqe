@@ -20,8 +20,13 @@
  *     square. The image is consistent with this rule but does not state it.
  *
  * A glyph with marks outside its triangle (a nasal circle on the apex, the
- * p bar, l, j …) would run into its neighbours, so it takes a square alone,
- * as "ma" and "no" do in the image. Words always start a new square.
+ * p bar, l, j …) would run into its neighbours, so it stands alone, as "ma"
+ * and "no" do in the image. Words always start a new square.
+ *
+ * A glyph that stands alone is not flattened: it is drawn exactly as
+ * designed. Nothing in the 2015 sheet gives the size of a glyph a meaning,
+ * so flattening is used only where it lets syllables interlock. Squares are
+ * set close together within a word so that a word reads as one shape.
  */
 import { BASE, HEIGHT, add, mid, pt, scale, sub, type Frame, type Point, type Stroke } from './geometry';
 import { VOWEL_SHAPES, buildSyllabicConsonant, buildSyllable, type Built } from './glyph';
@@ -35,8 +40,10 @@ const SLOT_FOR = { right: 'left', down: 'top', up: 'bottom', left: 'right' } as 
 export const squareSide = (unit: number) => BASE * unit;
 /** Room above each square, inside the row. */
 const topMargin = (unit: number) => unit * 4;
-/** Gap between words, on top of starting a new square. */
-const wordGap = (unit: number) => squareSide(unit) / 2;
+/** Gap between the squares of one word: just enough to keep their outlines apart. */
+const squareGap = (unit: number) => unit;
+/** Gap between words. */
+const wordGap = (unit: number) => squareSide(unit);
 
 type Triangle = Pick<Frame, 'origin' | 'apex' | 'base'>;
 
@@ -109,6 +116,14 @@ function mapStrokes(strokes: readonly Stroke[], from: Triangle, to: Triangle, sh
     }
   }
   return out;
+}
+
+/** Slide points and strokes by a fixed amount. */
+function shiftBy(d: Point) {
+  const point = (p: Point) => add(p, d);
+  const stroke = (s: Stroke): Stroke =>
+    s.kind === 'line' ? { ...s, a: point(s.a), b: point(s.b) } : { ...s, c: point(s.c) };
+  return { point, stroke };
 }
 
 /** The quarter of the square at (x, y) that a slot names, as a glyph frame. */
@@ -202,43 +217,61 @@ export function tessellate(
     let end = i;
     while (end < tokens.length && tokens[end].kind !== 'space' && tokens[end].kind !== 'newline') end++;
     const squares = pack(tokens, i, end, unit);
-    if (x > 0 && x + squares.length * side > maxWidth) {
+    // A square is at most a little wider than its side; this errs towards wrapping early.
+    if (x > 0 && x + squares.length * (side + squareGap(unit)) > maxWidth) {
       x = 0;
       y += step;
     }
     for (const members of squares) {
       const top = y + topMargin(unit);
-      for (const { index, built, slot } of members) {
-        const at = pt(x, y);
-        if (slot) {
-          const target = quarter(slot, x, top, side);
-          glyphs.push({
+      const centre = pt(side / 2, top + side / 2);
+      // Draw the square at x = 0 first, then slide it up against what came before.
+      const drawn = members.map(({ index, built, slot }) => {
+        if (slot && members.length > 1) {
+          const target = quarter(slot, 0, top, side);
+          return {
             index,
-            at,
-            advance: side,
-            cell,
             strokes: mapStrokes(built.strokes, built.frame, target, shrink),
             frame: { ...target, open: built.frame.open },
-          });
-        } else {
-          // A syllabic nasal keeps its size and is centred in the square.
-          const { origin, apex, base } = built.frame;
-          const shift = sub(pt(x + side / 2, top + side / 2), mid(mid(origin, base), apex));
-          const move = (p: Point) => add(p, shift);
-          glyphs.push({
-            index,
-            at,
-            advance: side,
-            cell,
-            strokes: built.strokes.map((s) =>
-              s.kind === 'line' ? { ...s, a: move(s.a), b: move(s.b) } : { ...s, c: move(s.c) },
-            ),
-            frame: { origin: move(origin), apex: move(apex), base: move(base), open: false },
-          });
+          };
         }
+        // A glyph with a square to itself keeps its designed proportions.
+        const { origin, apex, base, open } = built.frame;
+        const middle = slot
+          ? pt(
+              (Math.min(origin.x, apex.x, base.x) + Math.max(origin.x, apex.x, base.x)) / 2,
+              (Math.min(origin.y, apex.y, base.y) + Math.max(origin.y, apex.y, base.y)) / 2,
+            )
+          : mid(mid(origin, base), apex);
+        const move = shiftBy(sub(centre, middle));
+        return {
+          index,
+          strokes: built.strokes.map(move.stroke),
+          frame: { origin: move.point(origin), apex: move.point(apex), base: move.point(base), open },
+        };
+      });
+      const xs = drawn.flatMap((g) => [
+        g.frame.origin.x,
+        g.frame.apex.x,
+        g.frame.base.x,
+        ...g.strokes.flatMap((st) => samples(st, 8).map((p) => p.x)),
+      ]);
+      const left = Math.min(...xs);
+      const advance = Math.max(...xs) - left;
+      const move = shiftBy(pt(x - left, 0));
+      for (const g of drawn) {
+        const { origin, apex, base, open } = g.frame;
+        glyphs.push({
+          index: g.index,
+          at: pt(x, y),
+          advance,
+          cell,
+          strokes: g.strokes.map(move.stroke),
+          frame: { origin: move.point(origin), apex: move.point(apex), base: move.point(base), open },
+        });
       }
-      x += side;
-      width = Math.max(width, x);
+      x += advance + squareGap(unit);
+      width = Math.max(width, x - squareGap(unit));
       cell++;
     }
     i = end;
