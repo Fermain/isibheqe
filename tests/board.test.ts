@@ -85,6 +85,27 @@ describe('the arranging board', () => {
     }
   });
 
+  it('nestles a full triangle pointing up against one pointing down', () => {
+    const { tokens, tiles } = board('sawuna');
+    const nestled = put(put(tiles, 1, { col: 0.5 }), 2, { col: 1 });
+    expect(nestled.map((t) => t.col)).toEqual([0, 0.5, 1]);
+    expect(check(nestled, tokens)).toBeUndefined();
+    // the move is on offer when dragging
+    expect(targets(tiles, tokens, tiles[1].index).some((t) => t.col === 0.5 && t.row === 0 && !t.violation)).toBe(true);
+  });
+
+  it('refuses to nestle triangles that would overlap or share a mark', () => {
+    // two triangles pointing the same way overlap
+    const same = board('sasa');
+    expect(check(put(same.tiles, 1, { col: 0.5 }), same.tokens)?.rule).toBe('taken');
+    // the l line of "li" would lie in the gap, and could belong to either
+    const l = board('sali');
+    expect(check(put(l.tiles, 1, { col: 0.5 }), l.tokens)?.rule).toBe('trespass');
+    // the p bar of "bi" would run along the top of "sa"
+    const bar = board('sabi');
+    expect(check(put(bar.tiles, 1, { col: 0.5 }), bar.tokens)?.rule).toBe('trespass');
+  });
+
   it('suggests shapes where the tessellation experiment found them', () => {
     const { tokens } = transcribeZulu('sawubona ikati');
     const tiles = suggest(tokens);

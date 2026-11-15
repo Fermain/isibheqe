@@ -7,9 +7,9 @@ import { BASE, type Point } from '../core/geometry';
 import {
   boardLayout,
   check,
+  draw,
   lineUp,
   normalise,
-  slotOf,
   suggest,
   targets,
   type BoardLayout,
@@ -17,7 +17,6 @@ import {
   type Tile,
 } from '../core/board';
 import { renderSvg, svgPadding } from '../core/svg';
-import { quarter } from '../core/tessellate';
 import type { Token } from '../core/text';
 import { transcribeZulu } from '../input/zulu';
 import { glyphAt, paint, toPixel, type Fill, type Painted } from '../paint';
@@ -81,23 +80,25 @@ function gridPath(lay: BoardLayout): string {
 
 /** Where a target sits on screen: its outline and the point the pointer is measured against. */
 function targetShape(target: Target, tile: Tile, lay: BoardLayout): { d: string; centre: Point } {
+  const x = (target.col - lay.origin.col) * SIDE;
   const y = (target.row - lay.origin.row) * SIDE;
-  if (!Number.isInteger(target.col)) {
-    // A new column: a bar on the line between two columns.
-    const x = (Math.ceil(target.col) - lay.origin.col) * SIDE;
-    const w = SIDE * 0.12;
+  if (target.insert) {
+    // A new column: a bar on the line where it would open up.
+    const w = SIDE * 0.1;
     return {
       d: `M${n(x - w)} ${n(y + w)}h${n(w * 2)}v${n(SIDE - w * 2)}h${n(-w * 2)}z`,
       centre: { x, y: y + SIDE / 2 },
     };
   }
-  const x = (target.col - lay.origin.col) * SIDE;
-  const slot = slotOf(tile, state.tokens);
-  if (slot) {
-    const { origin, apex, base } = quarter(slot, x, y, SIDE);
+  if (state.tokens[tile.index].kind === 'syllable') {
+    // The triangle the glyph would fill there.
+    const { origin, apex, base } = draw({ ...tile, col: target.col, row: target.row }, state.tokens, UNIT).frame;
+    const dx = -lay.origin.col * SIDE;
+    const dy = -lay.origin.row * SIDE;
+    const at = (p: Point) => `${n(p.x + dx)} ${n(p.y + dy)}`;
     return {
-      d: `M${n(origin.x)} ${n(origin.y)}L${n(apex.x)} ${n(apex.y)}L${n(base.x)} ${n(base.y)}z`,
-      centre: { x: (origin.x + apex.x + base.x) / 3, y: (origin.y + apex.y + base.y) / 3 },
+      d: `M${at(origin)}L${at(apex)}L${at(base)}z`,
+      centre: { x: (origin.x + apex.x + base.x) / 3 + dx, y: (origin.y + apex.y + base.y) / 3 + dy },
     };
   }
   const inset = SIDE * 0.08;
@@ -284,12 +285,19 @@ surface.addEventListener('keydown', (event) => {
   if (!step) return;
   event.preventDefault();
   const [dc, dr] = step;
-  // Sideways: into the next column if that is allowed, else a new column beside this one.
-  const wanted = dc === 0 ? [[tile.col, tile.row + dr]] : [[tile.col + dc, tile.row], [tile.col + dc / 2, tile.row]];
+  // Sideways: half a square, else a whole one, else a new column on that side.
+  const wanted: [col: number, row: number, insert: boolean][] =
+    dc === 0
+      ? [[tile.col, tile.row + dr, false]]
+      : [
+          [tile.col + dc / 2, tile.row, false],
+          [tile.col + dc, tile.row, false],
+          [tile.col + (dc > 0 ? 1 : 0), tile.row, true],
+        ];
   const list = targets(state.tiles, state.tokens, tile.index);
   let refused: string | undefined;
-  for (const [col, row] of wanted) {
-    const target = list.find((t) => t.col === col && t.row === row);
+  for (const [col, row, insert] of wanted) {
+    const target = list.find((t) => t.col === col && t.row === row && t.insert === insert);
     if (target && !target.violation) {
       state.tiles = target.tiles;
       render();

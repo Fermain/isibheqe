@@ -8,10 +8,16 @@
  * drawn a little smaller, alone in its square. A glyph can never be turned
  * or mirrored: in this script the direction of the triangle is the vowel.
  *
+ * A glyph may also sit half a square to the side of its neighbour. That is
+ * how a full triangle pointing up nestles against one pointing down, their
+ * slanted sides running side by side, as they do in the ordinary line.
+ *
  * The rules, all of them this site's own:
- *   taken     one glyph per quarter; a full glyph has its square to itself
- *   trespass  no mark may land inside another glyph's triangle, or on top
- *             of another glyph's marks
+ *   taken     one glyph per quarter; a full glyph has its square to itself;
+ *             no two triangles may overlap
+ *   trespass  no mark outside its own triangle may land inside another
+ *             glyph, or so close to another glyph's lines that it could be
+ *             read as belonging there
  *   closed    no line may close the open base of u, e or o
  *   order     reading each word column by column, each column from the top,
  *             and each square left, top, bottom, right, must give the text
@@ -29,6 +35,7 @@ export interface Tile {
   index: number;
   /** Which word of the text it belongs to, counting from 0. */
   word: number;
+  /** Column, counted in squares. A half (0.5, 1.5 …) is a place between two squares. */
   col: number;
   row: number;
   size: 'flat' | 'full';
@@ -62,7 +69,11 @@ export function slotOf(tile: Tile, tokens: readonly Token[]): Slot | undefined {
   return tile.size === 'flat' && t.kind === 'syllable' ? SLOT_FOR[VOWEL_SHAPES[t.vowel].dir] : undefined;
 }
 
-/** Tidy the columns: whole numbers, no empty column inside a word, one between words; rows from 0. */
+/**
+ * Tidy the columns: close up any stretch inside a word that no glyph covers,
+ * leave one empty square between words, and count rows from 0. Half-square
+ * offsets between glyphs that overlap sideways are kept.
+ */
 export function normalise(tiles: readonly Tile[]): Tile[] {
   const words = [...new Set(tiles.map((t) => t.word))].sort((a, b) => a - b);
   const minRow = Math.min(...tiles.map((t) => t.row));
@@ -70,9 +81,11 @@ export function normalise(tiles: readonly Tile[]): Tile[] {
   let offset = 0;
   for (const word of words) {
     const mine = tiles.filter((t) => t.word === word);
-    const cols = [...new Set(mine.map((t) => t.col))].sort((a, b) => a - b);
-    for (const t of mine) out.push({ ...t, col: offset + cols.indexOf(t.col), row: t.row - minRow });
-    offset += cols.length + 1;
+    // Work in half squares: a glyph covers the half it starts on and the next.
+    const half = (t: Tile) => Math.round(t.col * 2);
+    const covered = [...new Set(mine.flatMap((t) => [half(t), half(t) + 1]))].sort((a, b) => a - b);
+    for (const t of mine) out.push({ ...t, col: (offset + covered.indexOf(half(t))) / 2, row: t.row - minRow });
+    offset += covered.length + 2;
   }
   return out.sort((a, b) => a.index - b.index);
 }
@@ -257,9 +270,32 @@ export function check(tiles: readonly Tile[], tokens: readonly Token[], unit = 1
   const outside = drawn.map((d) =>
     d.disc ? [] : d.strokes.flatMap((st) => samples(st, 8)).filter((p) => !inside(p, d, -0.03)),
   );
+  /** Points along the outline of a glyph's triangle (or its circle). */
+  const outline = drawn.map((d) => {
+    if (d.disc) return samples({ kind: 'circle', c: d.disc.c, r: d.disc.r }, 16);
+    const { origin, apex, base } = d.frame;
+    return [[origin, apex], [apex, base], [base, origin]].flatMap(([p, q]) =>
+      [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map((k) => add(p, scale(sub(q, p), k))),
+    );
+  });
+  /** True when a point is so close to a glyph's strokes that it could be taken for one of them. */
+  const near = (p: Point, d: Drawn) =>
+    d.strokes.some((st) => {
+      if (st.kind === 'line') return distanceToSegment(p, st.a, st.b) < unit * 0.5;
+      if (st.kind === 'arc') return samples(st, 8).some((q) => distance(p, q) < unit * 0.5);
+      const gap = distance(p, st.c) - st.r;
+      return st.kind === 'dot' ? gap < unit * 0.5 : Math.abs(gap) < unit * 0.5;
+    });
   for (let a = 0; a < tiles.length; a++) {
     for (let b = 0; b < tiles.length; b++) {
       if (a === b || Math.abs(tiles[a].col - tiles[b].col) > 2 || Math.abs(tiles[a].row - tiles[b].row) > 2) continue;
+      if (a < b && (outline[a].some((p) => inside(p, drawn[b], 0.04)) || outline[b].some((p) => inside(p, drawn[a], 0.04)))) {
+        return {
+          rule: 'taken',
+          message: `${label(tiles[a])} and ${label(tiles[b])} would overlap.`,
+          tiles: [tiles[a].index, tiles[b].index],
+        };
+      }
       if (outside[a].some((p) => inside(p, drawn[b], 0.03))) {
         return {
           rule: 'trespass',
@@ -267,10 +303,10 @@ export function check(tiles: readonly Tile[], tokens: readonly Token[], unit = 1
           tiles: [tiles[a].index, tiles[b].index],
         };
       }
-      if (a < b && outside[a].some((p) => outside[b].some((q) => distance(p, q) < unit / 2))) {
+      if (outside[a].some((p) => near(p, drawn[b]))) {
         return {
           rule: 'trespass',
-          message: `The marks of ${label(tiles[a])} and ${label(tiles[b])} would run into each other.`,
+          message: `The marks of ${label(tiles[a])} would sit so close to ${label(tiles[b])} that they could be read as part of it.`,
           tiles: [tiles[a].index, tiles[b].index],
         };
       }
@@ -301,18 +337,19 @@ export function check(tiles: readonly Tile[], tokens: readonly Token[], unit = 1
 export interface Target {
   col: number;
   row: number;
+  /** True when the glyph is given a new column here, pushing later glyphs along. */
+  insert: boolean;
   /** The arrangement this move gives, tidied. */
   tiles: Tile[];
   violation?: Violation;
 }
 
-const same = (a: readonly Tile[], b: readonly Tile[]) =>
-  a.every((t, i) => t.col === b[i].col && t.row === b[i].row && t.size === b[i].size);
+const signature = (tiles: readonly Tile[]) => tiles.map((t) => `${t.col},${t.row},${t.size}`).join(' ');
 
 /**
- * Every place one glyph could be moved to: the squares of its word's columns,
- * and a new column before, between or after them (a column number ending in
- * .5), one row beyond the board in each direction. Each comes with the
+ * Every place one glyph could be moved to: each half square across its word
+ * and one square beyond, one row beyond the board in each direction, and a
+ * new column at each place a glyph of the word starts. Each comes with the
  * arrangement it would give and the rule it would break, if any.
  */
 export function targets(tiles: readonly Tile[], tokens: readonly Token[], index: number, unit = 1): Target[] {
@@ -321,13 +358,26 @@ export function targets(tiles: readonly Tile[], tokens: readonly Token[], index:
   const cols = tiles.filter((t) => t.word === tile.word).map((t) => t.col);
   const [first, last] = [Math.min(...cols), Math.max(...cols)];
   const rows = tiles.map((t) => t.row);
+  const [top, bottom] = [Math.min(...rows) - 1, Math.max(...rows) + 1];
+  const seen = new Set([signature(tiles)]);
   const out: Target[] = [];
-  for (let col = first - 0.5; col <= last + 0.5; col += 0.5) {
-    for (let row = Math.min(...rows) - 1; row <= Math.max(...rows) + 1; row++) {
-      const moved = normalise(tiles.map((t) => (t.index === index ? { ...t, col, row } : t)));
-      if (same(moved, tiles)) continue;
-      out.push({ col, row, tiles: moved, violation: check(moved, tokens, unit) });
-    }
+  const offer = (col: number, row: number, insert: boolean) => {
+    const moved = normalise(
+      tiles.map((t) => {
+        if (t.index === index) return { ...t, col, row };
+        return insert && t.word === tile.word && t.col >= col ? { ...t, col: t.col + 1 } : t;
+      }),
+    );
+    const key = signature(moved);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ col, row, insert, tiles: moved, violation: check(moved, tokens, unit) });
+  };
+  for (let col = first - 1; col <= last + 1; col += 0.5) {
+    for (let row = top; row <= bottom; row++) offer(col, row, false);
+  }
+  for (const col of new Set([...cols, last + 1])) {
+    for (let row = top; row <= bottom; row++) offer(col, row, true);
   }
   return out;
 }
