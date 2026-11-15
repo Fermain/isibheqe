@@ -20,7 +20,16 @@ export interface Orthography {
    * elision mark. Keyed by stand-in; the value is the spelling.
    */
   letters?: Record<string, string>;
+  /**
+   * A word list for what the spelling cannot settle. Each entry gives a word
+   * in ordinary spelling and the same word divided into syllables with
+   * hyphens (emfuleni: e-m-fu-le-ni). A listed word is read syllable by
+   * syllable as divided; every other word is read by rule.
+   */
+  words?: Words;
 }
+
+export type Words = Record<string, string>;
 
 const SYLLABIC_M = 'm̩' as SyllabicConsonant;
 const SYLLABIC_N = 'n̩' as SyllabicConsonant;
@@ -40,6 +49,8 @@ export interface Transcription {
   tokens: Token[];
   /** Letter runs that could not be read, in order of appearance. */
   unread: string[];
+  /** Words read from the word list rather than by rule, as the list divides them. */
+  listed: string[];
 }
 
 function transcribeWord(
@@ -121,21 +132,38 @@ export function makeTranscriber(orthography: Orthography): (text: string) => Tra
   return (text) => {
     const tokens: Token[] = [];
     const unread: string[] = [];
+    const listed: string[] = [];
+    const words = orthography.words ?? {};
+    const standIn = (s: string) =>
+      standIns.reduce(
+        (t, [letter, spelling]) => t.replaceAll(new RegExp(`${spelling}(?=[aeiou])`, 'g'), letter),
+        s,
+      );
     const lines = text.toLowerCase().replace(/[’ʼ]/g, "'").split('\n');
     lines.forEach((line, lineIndex) => {
       if (lineIndex > 0) tokens.push({ kind: 'newline' });
-      for (const [letter, spelling] of standIns) {
-        line = line.replaceAll(new RegExp(`${spelling}(?=[aeiou])`, 'g'), letter);
-      }
-      const words = line.split(separators).filter((w) => /[^']/.test(w));
-      words.forEach((raw, wordIndex) => {
+      // Stand-ins go in before the line is split, so that the apostrophe of
+      // ng' is not taken for a word boundary or an elision mark.
+      const typed = standIn(line).split(separators).filter((w) => /[^']/.test(w));
+      typed.forEach((raw, wordIndex) => {
         if (wordIndex > 0) tokens.push({ kind: 'space' });
+        const plain = raw.replace(/./gu, (ch) => orthography.letters?.[ch] ?? ch);
+        const division = Object.hasOwn(words, plain) ? words[plain] : undefined;
+        if (division) {
+          // Each syllable is read by itself, so nothing outside it (such as a
+          // word-initial u) can change how it is divided.
+          for (const syllable of division.split('-')) {
+            transcribeWord(standIn(syllable), tokens, unread, orthography);
+          }
+          listed.push(division);
+          return;
+        }
         // Keep the apostrophe only where it marks a lone m or n; elsewhere it is
         // an elision mark (ngob'ukuthi) and carries no sound.
         const word = raw.replace(/(?<!(?:^|[aeiou])[mn])'/g, '');
         transcribeWord(word, tokens, unread, orthography);
       });
     });
-    return { tokens, unread };
+    return { tokens, unread, listed };
   };
 }

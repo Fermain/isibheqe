@@ -31,6 +31,7 @@ const state = {
   text: 'Sawubona mhlaba',
   textTokens: [] as Token[],
   unread: [] as string[],
+  listed: [] as string[],
   soundTokens: [] as Token[],
   /** Colour fills, kept separately for each way of writing. */
   fills: { text: [] as Fill[], sound: [] as Fill[] },
@@ -112,6 +113,15 @@ function render(): void {
     unread.hidden = false;
   } else {
     unread.hidden = true;
+  }
+
+  const listed = $('listed');
+  if (state.mode === 'text' && state.listed.length > 0) {
+    const words = [...new Set(state.listed)].map((w) => escapeHtml(w.replaceAll('-', '·'))).join(', ');
+    listed.innerHTML = `Read from the sample word list, not by rule: ${words}.`;
+    listed.hidden = false;
+  } else {
+    listed.hidden = true;
   }
 }
 
@@ -261,6 +271,7 @@ function readText(): void {
   const result = LANGUAGES[state.language].read(state.text);
   state.textTokens = result.tokens;
   state.unread = result.unread;
+  state.listed = result.listed;
   state.fills.text = state.fills.text.filter((f) => isGlyph(result.tokens[f.index]));
 }
 

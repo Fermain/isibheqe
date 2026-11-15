@@ -19,6 +19,7 @@
  */
 import type { Consonant } from '../core/glyph';
 import { makeTranscriber, type Transcription } from './nguni';
+import { ZULU_WORDS } from './words/zulu';
 
 export type { Transcription };
 
@@ -104,6 +105,7 @@ export const ZULU_ONSETS: Record<string, Consonant[]> = {
 /**
  * Transcribe isiZulu text. Punctuation is dropped (the script's punctuation
  * is not specified yet); line breaks are kept. Write m' or n' to force a
- * syllabic nasal.
+ * syllabic nasal. Words in the sample word list are read as the list divides
+ * them.
  */
-export const transcribeZulu = makeTranscriber({ onsets: ZULU_ONSETS });
+export const transcribeZulu = makeTranscriber({ onsets: ZULU_ONSETS, words: ZULU_WORDS });

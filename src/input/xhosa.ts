@@ -25,6 +25,7 @@
  */
 import type { Consonant } from '../core/glyph';
 import { makeTranscriber } from './nguni';
+import { XHOSA_WORDS } from './words/xhosa';
 import { ZULU_ONSETS } from './zulu';
 
 export const XHOSA_ONSETS: Record<string, Consonant[]> = {
@@ -58,4 +59,5 @@ export const XHOSA_ONSETS: Record<string, Consonant[]> = {
 export const transcribeXhosa = makeTranscriber({
   onsets: XHOSA_ONSETS,
   letters: { ŋ: "ng'" },
+  words: XHOSA_WORDS,
 });

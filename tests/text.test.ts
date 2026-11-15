@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { renderSvg, strokePaths } from '../src/core/svg';
 import { deserialize, layout, lineHeight, serialize, type Token } from '../src/core/text';
-import { transcribeXhosa } from '../src/input/xhosa';
-import { transcribeZulu } from '../src/input/zulu';
+import { makeTranscriber } from '../src/input/nguni';
+import { XHOSA_WORDS } from '../src/input/words/xhosa';
+import { ZULU_WORDS } from '../src/input/words/zulu';
+import { XHOSA_ONSETS, transcribeXhosa } from '../src/input/xhosa';
+import { ZULU_ONSETS, transcribeZulu } from '../src/input/zulu';
 
 const read = (text: string) =>
   transcribeZulu(text).tokens.map((t) =>
@@ -173,5 +176,44 @@ describe('isiXhosa transcription', () => {
 
   it('writes the name of the language', () => {
     expect(xh('isiXhosa')).toEqual(['i', 'si', '||ɔ', 'sa']);
+  });
+});
+
+describe('sample word lists', () => {
+  it('reads a listed word as the list divides it', () => {
+    // umfula takes the prefix um-, so its m stays a syllable in the locative.
+    expect(read('emfuleni')).toEqual(['ɛ', 'm̩', 'fu', 'lɛ', 'ni']);
+    expect(read('siyambonga')).toEqual(['si', 'ja', 'm̩', 'p-•ɔ', '°k-•a']);
+    expect(transcribeZulu('Emfuleni').listed).toEqual(['e-m-fu-le-ni']);
+  });
+
+  it('still reads every other word by rule', () => {
+    // imfundo has a prenasalised mf, and so does its locative.
+    expect(read('emfundweni')).toEqual(['ɛ', '°fu', '°t-•wɛ', 'ni']);
+    expect(read('siyabonga')).toEqual(['si', 'ja', 'p-•ɔ', '°k-•a']);
+    expect(transcribeZulu('siyabonga emfundweni').listed).toEqual([]);
+  });
+
+  it('keeps one consonant whole where the rule would split it', () => {
+    expect(read('umpetha')).toEqual(['u', '°p•ɛ', 'ta']);
+    expect(read('umfana')).toEqual(['u', 'm̩', 'fa', 'na']);
+  });
+
+  const lists = [
+    ['isiZulu', ZULU_WORDS, ZULU_ONSETS, transcribeZulu],
+    ['isiXhosa', XHOSA_WORDS, XHOSA_ONSETS, transcribeXhosa],
+  ] as const;
+
+  it.each(lists)('%s entries spell their word, read cleanly and differ from the rule', (_, words, onsets, withList) => {
+    const byRule = makeTranscriber({ onsets });
+    const sources = (tokens: Token[]) => tokens.map((t) => ('source' in t ? t.source : '')).join('-');
+    for (const [word, division] of Object.entries(words)) {
+      expect(division.replaceAll('-', ''), word).toBe(word);
+      const listed = withList(word);
+      expect(listed.unread, word).toEqual([]);
+      expect(sources(listed.tokens), word).toBe(division);
+      // An entry the rule already reads the same way does not belong in the list.
+      expect(sources(byRule(word).tokens), word).not.toBe(division);
+    }
   });
 });

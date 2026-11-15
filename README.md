@@ -65,6 +65,12 @@ and applies the script's feature rules to the spellings isiXhosa adds (ty, tyh, 
 dz, rh, gr, kr, tl, ng', nh, nyh). No published isiXhosa chart for the script was used; the
 header of that file says how sure each group is.
 
+`src/input/words/` holds a sample word list for each of the two languages, as a proof of
+concept. A listed word is read as the list divides it into syllables (`emfuleni: e-m-fu-le-ni`)
+and every other word is read by rule. The lists cover one thing the spelling does not show:
+whether an m before b, p, f or v is a syllable by itself. The entries were written from memory
+by a non-speaker and have not been checked.
+
 ## Development
 
 ```sh
@@ -77,7 +83,7 @@ pnpm build    # static site in dist/
 - `src/core/` turns syllables into strokes and SVG. It has no dependencies and does not need a
   browser.
 - `src/input/nguni.ts` reads ordinary spelling into syllables; `zulu.ts` and `xhosa.ts` beside it
-  hold each language's table of consonant spellings.
+  hold each language's table of consonant spellings, and `words/` its sample word list.
 - `index.html` with `src/main.ts` is the Write page; `learn.html` and `about.html` are the
   other two, with their scripts in `src/pages/`.
 - `src/ui.ts`, `src/keys.ts`, `src/paint.ts` and `src/style.css` are shared.
