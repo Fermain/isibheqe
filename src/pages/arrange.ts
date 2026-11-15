@@ -92,7 +92,8 @@ function targetShape(target: Target, tile: Tile, lay: BoardLayout): { d: string;
   }
   if (state.tokens[tile.index].kind === 'syllable') {
     // The triangle the glyph would fill there.
-    const { origin, apex, base } = draw({ ...tile, col: target.col, row: target.row }, state.tokens, UNIT).frame;
+    const size = target.tiles.find((t) => t.index === tile.index)!.size;
+    const { origin, apex, base } = draw({ ...tile, size, col: target.col, row: target.row }, state.tokens, UNIT).frame;
     const dx = -lay.origin.col * SIDE;
     const dy = -lay.origin.row * SIDE;
     const at = (p: Point) => `${n(p.x + dx)} ${n(p.y + dy)}`;
@@ -193,6 +194,14 @@ function toBoard(event: PointerEvent | MouseEvent): Point | undefined {
   };
 }
 
+/** Take up a new arrangement. Colour on a glyph whose outline changed would not fit, and is dropped. */
+function adopt(next: Tile[]): void {
+  const before = new Map(state.tiles.map((t) => [t.index, t.size]));
+  const changed = new Set(next.filter((t) => before.get(t.index) !== t.size).map((t) => t.index));
+  state.fills = state.fills.filter((f) => !changed.has(f.index));
+  state.tiles = next;
+}
+
 let press: { index: number; from: Point; clientX: number; clientY: number } | undefined;
 
 surface.addEventListener('pointerdown', (event) => {
@@ -250,7 +259,7 @@ function release(): void {
   state.drag = null;
   if (drag) {
     const target = drag.list[drag.nearest];
-    if (target && !target.violation) state.tiles = target.tiles;
+    if (target && !target.violation) adopt(target.tiles);
     else if (target?.violation) say(target.violation.message);
   } else if (pressed) {
     state.selected = pressed.index;
@@ -299,7 +308,7 @@ surface.addEventListener('keydown', (event) => {
   for (const [col, row, insert] of wanted) {
     const target = list.find((t) => t.col === col && t.row === row && t.insert === insert);
     if (target && !target.violation) {
-      state.tiles = target.tiles;
+      adopt(target.tiles);
       render();
       return;
     }
@@ -311,8 +320,9 @@ surface.addEventListener('keydown', (event) => {
 function toggleSize(): void {
   const tile = tileOf(state.selected);
   if (!tile || state.tokens[tile.index].kind !== 'syllable') return;
+  // Flat by hand stays flat, even alone in its square.
   const size = tile.size === 'flat' ? 'full' : 'flat';
-  if (attempt(state.tiles.map((t) => (t === tile ? { ...t, size } : t)))) {
+  if (attempt(state.tiles.map((t) => (t === tile ? { ...t, size, kept: size === 'flat' } : t)))) {
     // Colour was placed on the old outline and would not fit the new one.
     state.fills = state.fills.filter((f) => f.index !== tile.index);
   }

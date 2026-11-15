@@ -106,6 +106,30 @@ describe('the arranging board', () => {
     expect(check(put(bar.tiles, 1, { col: 0.5 }), bar.tokens)?.rule).toBe('trespass');
   });
 
+  it('flattens two glyphs when one is dropped on the other, and restores them when parted', () => {
+    const { tokens, tiles } = board('sawubona');
+    const wu = tiles[1].index;
+    const onto = targets(tiles, tokens, wu).find((t) => t.col === 0 && t.row === 0 && !t.insert)!;
+    expect(onto.violation).toBeUndefined();
+    expect(onto.tiles.map((t) => t.size)).toEqual(['flat', 'flat', 'full', 'full']);
+    expect(onto.tiles.map((t) => t.col)).toEqual([0, 0, 1, 2]);
+    // pulling it out to a column of its own gives both their full size back
+    const out = targets(onto.tiles, tokens, wu).find((t) => t.insert && t.col === 1 && t.row === 0)!;
+    expect(out.violation).toBeUndefined();
+    expect(out.tiles.map((t) => t.size)).toEqual(['full', 'full', 'full', 'full']);
+    // "bo" cannot join them: its quarter (the left) would be read before "sa"
+    const bo = targets(onto.tiles, tokens, tiles[2].index).find((t) => t.col === 0 && t.row === 0 && !t.insert)!;
+    expect(bo.violation?.rule).toBe('order');
+  });
+
+  it('keeps a glyph flat when it was made flat by hand', () => {
+    const { tokens, tiles } = board('sika');
+    const byHand = tiles.map((t, i) => (i === 0 ? { ...t, size: 'flat' as const, kept: true } : t));
+    const moved = targets(byHand, tokens, tiles[1].index).filter((t) => !t.violation);
+    expect(moved.length).toBeGreaterThan(0);
+    for (const t of moved) expect(t.tiles[0].size).toBe('flat');
+  });
+
   it('suggests shapes where the tessellation experiment found them', () => {
     const { tokens } = transcribeZulu('sawubona ikati');
     const tiles = suggest(tokens);

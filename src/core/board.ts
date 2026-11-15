@@ -39,6 +39,12 @@ export interface Tile {
   col: number;
   row: number;
   size: 'flat' | 'full';
+  /**
+   * True when the person chose the flat form for this glyph themselves. A
+   * glyph that was only flattened to share a square goes back to full size
+   * when it is left alone there; one that was made flat by hand stays flat.
+   */
+  kept?: boolean;
 }
 
 export type Rule = 'taken' | 'trespass' | 'closed' | 'order' | 'apart';
@@ -90,6 +96,15 @@ export function normalise(tiles: readonly Tile[]): Tile[] {
   return out.sort((a, b) => a.index - b.index);
 }
 
+/** Give back its full size to any glyph that was flattened only to share a square and is now alone in it. */
+export function settle(tiles: readonly Tile[]): Tile[] {
+  return tiles.map((t) => {
+    if (t.size !== 'flat' || t.kept) return t;
+    const shared = tiles.some((o) => o !== t && o.col === t.col && o.row === t.row);
+    return shared ? t : { ...t, size: 'full' as const };
+  });
+}
+
 /** The starting arrangement: every glyph full size, in a line. */
 export function lineUp(tokens: readonly Token[]): Tile[] {
   const tiles: Tile[] = [];
@@ -120,8 +135,9 @@ export function suggest(tokens: readonly Token[], unit = 1): Tile[] {
       else if (shape.kind === 'square') {
         for (const m of shape.members) tiles.push({ index: m.index, word, col, row: 0, size: 'flat' });
       } else {
-        tiles.push({ index: shape.upper.index, word, col, row: 0, size: 'flat' });
-        tiles.push({ index: shape.lower.index, word, col, row: 1, size: 'flat' });
+        // The two halves of a diamond sit in different squares, so they are kept flat by name.
+        tiles.push({ index: shape.upper.index, word, col, row: 0, size: 'flat', kept: true });
+        tiles.push({ index: shape.lower.index, word, col, row: 1, size: 'flat', kept: true });
       }
       col++;
     }
@@ -351,6 +367,9 @@ const signature = (tiles: readonly Tile[]) => tiles.map((t) => `${t.col},${t.row
  * and one square beyond, one row beyond the board in each direction, and a
  * new column at each place a glyph of the word starts. Each comes with the
  * arrangement it would give and the rule it would break, if any.
+ *
+ * Moving onto a square that already holds a glyph flattens both, so that
+ * they can share it; a glyph left alone afterwards gets its full size back.
  */
 export function targets(tiles: readonly Tile[], tokens: readonly Token[], index: number, unit = 1): Target[] {
   const tile = tiles.find((t) => t.index === index);
@@ -361,12 +380,18 @@ export function targets(tiles: readonly Tile[], tokens: readonly Token[], index:
   const [top, bottom] = [Math.min(...rows) - 1, Math.max(...rows) + 1];
   const seen = new Set([signature(tiles)]);
   const out: Target[] = [];
+  const canFlatten = (t: Tile) => tokens[t.index].kind === 'syllable';
   const offer = (col: number, row: number, insert: boolean) => {
+    const joins =
+      !insert && canFlatten(tile) && tiles.some((t) => t.index !== index && t.col === col && t.row === row);
     const moved = normalise(
-      tiles.map((t) => {
-        if (t.index === index) return { ...t, col, row };
-        return insert && t.word === tile.word && t.col >= col ? { ...t, col: t.col + 1 } : t;
-      }),
+      settle(
+        tiles.map((t): Tile => {
+          if (t.index === index) return { ...t, col, row, size: joins ? 'flat' : t.size };
+          if (joins && t.col === col && t.row === row && canFlatten(t)) return { ...t, size: 'flat' };
+          return insert && t.word === tile.word && t.col >= col ? { ...t, col: t.col + 1 } : t;
+        }),
+      ),
     );
     const key = signature(moved);
     if (seen.has(key)) return;
