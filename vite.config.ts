@@ -31,7 +31,7 @@ const checkSheetResults: Plugin = {
   },
 };
 
-// Three static pages. Relative base so the built site works from any folder.
+// Four static pages. Relative base so the built site works from any folder.
 export default defineConfig({
   base: './',
   plugins: [checkSheetResults],
@@ -41,6 +41,7 @@ export default defineConfig({
         index: resolve(import.meta.dirname, 'index.html'),
         learn: resolve(import.meta.dirname, 'learn.html'),
         about: resolve(import.meta.dirname, 'about.html'),
+        arrange: resolve(import.meta.dirname, 'arrange.html'),
       },
     },
   },

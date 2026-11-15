@@ -397,6 +397,75 @@ tbody th[scope='row'] {
   stroke: var(--red);
 }
 
+/* ------------------------------------------------------- arranging board */
+
+.board {
+  justify-content: center;
+  touch-action: none;
+}
+
+.board .sheet g[data-index] {
+  cursor: grab;
+}
+
+.board.dragging .sheet,
+.board.dragging .sheet g[data-index] {
+  cursor: grabbing;
+}
+
+.board .grid {
+  stroke: var(--hair);
+}
+
+.board .target {
+  fill: var(--tint);
+  stroke: none;
+}
+
+.board .target.hot {
+  fill: var(--sun);
+}
+
+.board g.lifted {
+  opacity: 0.55;
+}
+
+.board g.selected {
+  stroke: var(--red);
+}
+
+.board g.selected path[fill]:not([fill='none']) {
+  fill: var(--red);
+}
+
+.reading {
+  margin: 0.5rem 0 0;
+  font-family: var(--ipa);
+  font-size: 1.1rem;
+}
+
+.reading b {
+  color: var(--red);
+}
+
+.rules {
+  margin-top: 1.5rem;
+  max-width: 44rem;
+}
+
+.rules h3 {
+  margin: 0 0 0.4rem;
+}
+
+.rules ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+}
+
+.rules li {
+  margin-bottom: 0.4rem;
+}
+
 .surface .empty {
   margin: 0 auto;
   color: var(--muted);

@@ -48,19 +48,19 @@ import { VOWEL_SHAPES, buildSyllabicConsonant, buildSyllable, type Built } from 
 import { glossHeight, lineHeight, rowHeight, spaceWidth, type Layout, type Placed, type Token } from './text';
 
 export type Slot = 'left' | 'top' | 'bottom' | 'right';
-const SLOT_ORDER: readonly Slot[] = ['left', 'top', 'bottom', 'right'];
+export const SLOT_ORDER: readonly Slot[] = ['left', 'top', 'bottom', 'right'];
 /** The quarter a vowel's triangle fills: opposite to the way its apex points. */
-const SLOT_FOR = { right: 'left', down: 'top', up: 'bottom', left: 'right' } as const;
+export const SLOT_FOR = { right: 'left', down: 'top', up: 'bottom', left: 'right' } as const;
 
 export const squareSide = (unit: number) => BASE * unit;
 
-type Triangle = Pick<Frame, 'origin' | 'apex' | 'base'>;
+export type Triangle = Pick<Frame, 'origin' | 'apex' | 'base'>;
 
 /** Marks drawn as a circle on the apex with bars inside it. */
 const NASAL_MARKS = new Set(['n̪', 'n', 'ɲ', 'ŋ'].map((m) => m.normalize('NFD')));
 
 /** Coordinates of p in the triangle's own axes: p = origin + s·(base − origin) + t·(apex − origin). */
-function local(p: Point, { origin, apex, base }: Triangle): [s: number, t: number] {
+export function local(p: Point, { origin, apex, base }: Triangle): [s: number, t: number] {
   const u = sub(base, origin);
   const v = sub(apex, origin);
   const d = sub(p, origin);
@@ -76,7 +76,7 @@ function mapPoint(p: Point, from: Triangle, to: Triangle): Point {
 }
 
 /** Points along a stroke, enough to test where it lies or to redraw an arc. */
-function samples(s: Stroke, steps = 16): Point[] {
+export function samples(s: Stroke, steps = 16): Point[] {
   if (s.kind === 'line') return [s.a, s.b];
   const TAU = Math.PI * 2;
   // Canvas arcs here run anticlockwise, that is with decreasing angle.
@@ -99,7 +99,7 @@ export function staysInside(built: Built, slack = 0.03): boolean {
 }
 
 /** Redraw strokes from one triangle into another. */
-function mapStrokes(strokes: readonly Stroke[], from: Triangle, to: Triangle, shrink: number): Stroke[] {
+export function mapStrokes(strokes: readonly Stroke[], from: Triangle, to: Triangle, shrink: number): Stroke[] {
   const out: Stroke[] = [];
   // The bars inside a nasal circle must shrink with it, or they poke out.
   const hubs = new Map<string, Point>();
@@ -136,7 +136,7 @@ function shiftBy(d: Point) {
 }
 
 /** The quarter of the square at (x, y) that a slot names, as a glyph frame. */
-function quarter(slot: Slot, x: number, y: number, side: number): Triangle {
+export function quarter(slot: Slot, x: number, y: number, side: number): Triangle {
   const apex = pt(x + side / 2, y + side / 2);
   const [tl, tr, bl, br] = [pt(x, y), pt(x + side, y), pt(x, y + side), pt(x + side, y + side)];
   // Corner order matches frame() in glyph.ts, so nothing is mirrored.
@@ -170,13 +170,13 @@ function diamond(x: number, y: number, side: number): [upper: Triangle, lower: T
   ];
 }
 
-type Shape =
+export type Shape =
   | { kind: 'alone'; index: number }
   | { kind: 'square'; members: { index: number; built: Built; slot: Slot }[] }
   | { kind: 'diamond'; upper: { index: number; built: Built }; lower: { index: number; built: Built } };
 
 /** Sort one word's glyphs into shapes. */
-function pack(tokens: readonly Token[], from: number, to: number, unit: number): Shape[] {
+export function pack(tokens: readonly Token[], from: number, to: number, unit: number): Shape[] {
   const shapes: Shape[] = [];
   let open: { shape: Extract<Shape, { kind: 'square' }>; rank: number } | undefined;
   const build = (t: Syllable) => buildSyllable(t.vowel, t.consonants, unit);
