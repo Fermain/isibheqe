@@ -1,5 +1,6 @@
 import { isConsonant, type Consonant } from './core/glyph';
 import { renderSvg, svgPadding } from './core/svg';
+import { tessellate } from './core/tessellate';
 import {
   deserialize,
   glossHeight,
@@ -22,8 +23,13 @@ const state = {
   textTokens: [] as Token[],
   unread: [] as string[],
   soundTokens: [] as Token[],
-  /** Colour fills, kept separately for each way of writing. */
-  fills: { text: [] as Fill[], sound: [] as Fill[] },
+  /** Lay glyphs out as tessellated squares instead of a line (an experiment). */
+  tessellate: false,
+  /** Colour fills, kept separately for each layout and each way of writing. */
+  fills: {
+    line: { text: [] as Fill[], sound: [] as Fill[] },
+    squares: { text: [] as Fill[], sound: [] as Fill[] },
+  },
   /** The colour being painted with, 'erase', or null when not painting. */
   brush: null as string | null,
   /** Show the Latin reading under each glyph. */
@@ -33,7 +39,26 @@ const state = {
 };
 
 const tokens = () => (state.mode === 'text' ? state.textTokens : state.soundTokens);
-const fills = () => state.fills[state.mode];
+const fillStore = () => state.fills[state.tessellate ? 'squares' : 'line'];
+const fills = () => fillStore()[state.mode];
+const arrange = (list: readonly Token[], unit: number, maxWidth?: number, gloss?: boolean) =>
+  (state.tessellate ? tessellate : layout)(list, unit, maxWidth, gloss);
+
+/**
+ * The reading printed under a glyph. A tessellated square prints one reading
+ * for all the syllables in it, under its first glyph.
+ */
+function labelsFor(lay: Layout, list: readonly Token[]): (i: number) => string | undefined {
+  const squares = new Map<number, number[]>();
+  for (const g of lay.glyphs) {
+    if (g.cell !== undefined) squares.set(g.cell, [...(squares.get(g.cell) ?? []), g.index]);
+  }
+  const first = new Map([...squares.values()].map((members) => [members[0], members]));
+  return (i) => {
+    if (squares.size === 0) return spelled(list[i]);
+    return first.get(i)?.map((m) => spelled(list[m])).join('·');
+  };
+}
 const isGlyph = (t: Token | undefined) => t?.kind === 'syllable' || t?.kind === 'syllabic';
 
 // ---------------------------------------------------------------- surface
@@ -78,11 +103,11 @@ function render(): void {
       state.mode === 'text' ? 'Type some isiZulu below.' : 'Choose a vowel below to begin.'
     }</p>`;
   } else {
-    const lay = layout(list, unit, maxWidth, state.gloss);
+    const lay = arrange(list, unit, maxWidth, state.gloss);
     const svg = renderSvg(lay, {
       unit,
       title: said || 'isiBheqe text',
-      labels: state.gloss ? (i) => spelled(list[i]) : undefined,
+      labels: state.gloss ? labelsFor(lay, list) : undefined,
       glyphAttrs: (i) => `data-index="${i}"${i === state.selected ? ' class="selected"' : ''}`,
     });
     surface.innerHTML = `<div class="sheet">${svg}</div>`;
@@ -242,6 +267,12 @@ $<HTMLInputElement>('show-gloss').addEventListener('change', (event) => {
   render();
 });
 
+$<HTMLInputElement>('tessellate').addEventListener('change', (event) => {
+  state.tessellate = (event.target as HTMLInputElement).checked;
+  $('tessellate-note').hidden = !state.tessellate;
+  render();
+});
+
 // ------------------------------------------------------------- text input
 
 const textBox = $<HTMLTextAreaElement>('latin');
@@ -251,7 +282,9 @@ function readText(): void {
   const result = transcribeZulu(state.text);
   state.textTokens = result.tokens;
   state.unread = result.unread;
-  state.fills.text = state.fills.text.filter((f) => isGlyph(result.tokens[f.index]));
+  for (const store of Object.values(state.fills)) {
+    store.text = store.text.filter((f) => isGlyph(result.tokens[f.index]));
+  }
 }
 
 textBox.value = state.text;
@@ -263,7 +296,7 @@ textBox.addEventListener('input', () => {
 
 $('continue-by-sound').addEventListener('click', () => {
   state.soundTokens = structuredClone(state.textTokens);
-  state.fills.sound = structuredClone(state.fills.text);
+  for (const store of Object.values(state.fills)) store.sound = structuredClone(store.text);
   setMode('sound');
   say('Copied to the sound keyboard.');
 });
@@ -296,7 +329,9 @@ function press(symbol: string): void {
     const token = tokenFor(symbol);
     if (token) list.push(token);
   }
-  state.fills.sound = state.fills.sound.filter((f) => isGlyph(list[f.index]));
+  for (const store of Object.values(state.fills)) {
+    store.sound = store.sound.filter((f) => isGlyph(list[f.index]));
+  }
   state.selected = null;
   render();
 }
@@ -416,7 +451,7 @@ function exportSvg(scale = 1): string | undefined {
     say('Nothing to export yet.');
     return undefined;
   }
-  const lay = layout(list, EXPORT_UNIT, EXPORT_UNIT * 200);
+  const lay = arrange(list, EXPORT_UNIT, EXPORT_UNIT * 200);
   const pad = svgPadding(EXPORT_UNIT);
   // Colour travels with the export as an image layer under the strokes.
   const painted = paintFills(lay, [...fills()], EXPORT_UNIT, 4);
@@ -494,7 +529,7 @@ $('load-json').addEventListener('click', () => {
   const error = $('json-error');
   try {
     state.soundTokens = deserialize(jsonBox.value);
-    state.fills.sound = [];
+    for (const store of Object.values(state.fills)) store.sound = [];
     error.hidden = true;
     setMode('sound');
     say('Loaded.');
