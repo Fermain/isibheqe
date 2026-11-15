@@ -11,10 +11,13 @@
  *     that points down, at exactly their designed size. Neighbours in a row
  *     share a side; an i above an a shares its base.
  *   - e, ɛ, o and ɔ point sideways and no triangle of this lattice does.
- *     Small, they are scaled to the height of a row and stand in it like any
- *     other glyph. Large, they are 1.73 times the designed size, two rows
- *     high, which puts all three corners on points of the lattice.
- *   - A syllabic nasal is its designed circle, one row high.
+ *     They sit on a line of the lattice instead: the middle of the base on
+ *     one point, the apex on the next point along, a base away. That makes
+ *     them a little longer than designed (16 : 16 against 13.8 : 16). Large,
+ *     they are 1.73 times the designed size, two rows high, with all three
+ *     corners on points of the lattice.
+ *   - A syllabic nasal sits on a line too: a circle drawn through two
+ *     neighbouring points, a little larger than designed.
  *
  * A glyph can never be turned or mirrored: direction is the vowel.
  *
@@ -27,13 +30,19 @@
  *   closed    no line may close the open base of u, e or o
  *   order     reading each word left to right, and from the top where two
  *             glyphs start at the same step, must give the text
- *   apart     every glyph of a word is next to another glyph of that word
+ *   apart     a word is one figure: every glyph touches another glyph of
+ *             its word at a point of the lattice, or stands right beside
+ *             one where a mark keeps them from touching
  * Moving a glyph carries the rest of its word after it along, in formation,
  * since a word is built from left to right; a glyph can also be moved alone.
  *
- * Words follow each other left to right. After every move the board pulls
- * each glyph as far left as these rules allow, which closes any space left
- * behind and keeps words a base apart.
+ * Words follow each other left to right, and the board keeps them a base
+ * apart.
+ *
+ * The starting arrangement puts each glyph against the one before it, in
+ * the same row where it can. A leading vowel by itself (the u of ubaba) is
+ * set a row above the rest, to show the root; a word of two glyphs steps
+ * down from the first to the second.
  */
 import { BASE, HEIGHT, add, mid, pt, scale, sub, type Frame, type Point, type Stroke } from './geometry';
 import { VOWEL_SHAPES, buildSyllabicConsonant, buildSyllable } from './glyph';
@@ -47,7 +56,11 @@ export interface Tile {
   word: number;
   /** Step along the row, in half bases, of the glyph's left edge. */
   k: number;
-  /** Row of the glyph's top edge. */
+  /**
+   * Row of the glyph's top edge. For a glyph that sits on a line (a sideways
+   * glyph at its ordinary size, or a syllabic nasal), the line at the top of
+   * this row.
+   */
   row: number;
   /** A sideways glyph drawn two rows high. */
   large?: boolean;
@@ -90,14 +103,49 @@ export function sideways(tile: Tile, tokens: readonly Token[]): boolean {
 /** How many steps wide and rows high a tile is. */
 const span = (tile: Tile) => (tile.large ? { steps: 3, rows: 2 } : { steps: 2, rows: 1 });
 
-/** True when the tile sits where the lattice has a triangle pointing its way. */
+/** True for a glyph that sits on a line of the lattice instead of in a triangle of it. */
+function onLine(tile: Tile, tokens: readonly Token[]): boolean {
+  const dir = direction(tile, tokens);
+  return !tile.large && dir !== 'up' && dir !== 'down';
+}
+
+/** True when the tile sits where the lattice has a triangle, or a pair of points, for it. */
 function fits(tile: Tile, tokens: readonly Token[]): boolean {
   const dir = direction(tile, tokens);
   const even = (((tile.k + tile.row) % 2) + 2) % 2 === 0;
   if (dir === 'up') return even;
   if (dir === 'down') return !even;
-  if (tile.large) return dir === 'right' ? even : !even;
-  return true;
+  // Points of the lattice lie where step and line add up to an odd number.
+  if (tile.large) return dir === 'right' ? !even : even;
+  return !even;
+}
+
+/** The points of the lattice a glyph has a corner on, as [step, line]. Glyphs touch where they share one. */
+export function corners(tile: Tile, tokens: readonly Token[]): [number, number][] {
+  const { k, row } = tile;
+  const dir = direction(tile, tokens);
+  if (dir === 'up') return [[k, row + 1], [k + 2, row + 1], [k + 1, row]];
+  if (dir === 'down') return [[k, row], [k + 2, row], [k + 1, row + 1]];
+  if (tile.large) {
+    return dir === 'right'
+      ? [[k, row], [k, row + 2], [k + 3, row + 1]]
+      : [[k + 3, row], [k + 3, row + 2], [k, row + 1]];
+  }
+  return [[k, row], [k + 2, row]];
+}
+
+const touching = (a: Tile, b: Tile, tokens: readonly Token[]) =>
+  corners(a, tokens).some(([k, line]) => corners(b, tokens).some(([k2, line2]) => k === k2 && line === line2));
+
+/**
+ * True when two glyphs stand right beside each other without touching. Some
+ * pairs cannot touch at all, because a mark of one is in the way (the circle
+ * on the apex of "ne" faces the glyph before it), so this has to count as
+ * belonging together too.
+ */
+function beside(a: Tile, b: Tile, tokens: readonly Token[]): boolean {
+  const gap = Math.max(a.k, b.k) - Math.min(a.k + span(a).steps, b.k + span(b).steps);
+  return gap <= 4 && Math.abs(middle(a, tokens) - middle(b, tokens)) <= 1.5;
 }
 
 /**
@@ -117,35 +165,20 @@ export function normalise(tiles: readonly Tile[]): Tile[] {
 /** Steps between the end of one word and the start of the next. */
 const WORD_GAP = 2;
 
-/**
- * Tidy an arrangement: pull every glyph, and everything after it, as far
- * left as the rules allow, a whole base at a time, keeping words apart.
- * This is what closes the space a glyph leaves behind when it is moved.
- */
-export function settle(tiles: readonly Tile[], tokens: readonly Token[], unit = 1): Tile[] {
-  let now = normalise(tiles);
-  const wordsApart = (list: Tile[]) => {
-    const words = [...new Set(list.map((t) => t.word))].sort((a, b) => a - b);
-    return words.every((word, i) => {
-      if (i === 0) return true;
-      const end = Math.max(...list.filter((t) => t.word === words[i - 1]).map((t) => t.k + span(t).steps));
-      return Math.min(...list.filter((t) => t.word === word).map((t) => t.k)) - end >= WORD_GAP;
-    });
-  };
-  if (check(now, tokens, unit, true) || !wordsApart(now)) return now;
-  for (let pass = 0; pass < 40; pass++) {
-    let moved = false;
-    for (let j = 1; j < now.length; j++) {
-      const from = now[j].index;
-      const pulled = now.map((t) => (t.index >= from ? { ...t, k: t.k - 2 } : t));
-      if (wordsApart(pulled) && !check(pulled, tokens, unit, true)) {
-        now = pulled;
-        moved = true;
-      }
-    }
-    if (!moved) break;
+/** Tidy an arrangement: corner at the start, and each word two or three steps after the one before. */
+export function settle(tiles: readonly Tile[], _tokens?: readonly Token[], _unit = 1): Tile[] {
+  const now = normalise(tiles);
+  const out: Tile[] = [];
+  let cursor: number | undefined;
+  for (const word of [...new Set(now.map((t) => t.word))].sort((a, b) => a - b)) {
+    const mine = now.filter((t) => t.word === word);
+    const first = Math.min(...mine.map((t) => t.k));
+    let shift = cursor === undefined ? 0 : cursor - first;
+    if (shift % 2 !== 0) shift += 1;
+    for (const t of mine) out.push({ ...t, k: t.k + shift });
+    cursor = Math.max(...mine.map((t) => t.k + span(t).steps)) + shift + WORD_GAP;
   }
-  return normalise(now);
+  return normalise(out);
 }
 
 /** Points all along a stroke, close enough together to test where it runs. */
@@ -170,14 +203,18 @@ export function draw(tile: Tile, tokens: readonly Token[], unit: number): Drawn 
   const { origin, apex, base, open } = built.frame;
 
   if (t.kind === 'syllabic') {
-    const shift = sub(pt(left + step(unit), top + rowHeight(unit) / 2), mid(mid(origin, base), apex));
-    const move = (p: Point) => add(p, shift);
+    // A circle through two neighbouring points of the line: a base across, a little larger than designed.
+    const from = mid(mid(origin, base), apex);
+    const centre = pt(left + step(unit), top);
+    const grow = BASE / HEIGHT;
+    const move = (p: Point) => add(centre, scale(sub(p, from), grow));
     return {
       strokes: built.strokes.map(
-        (st): Stroke => (st.kind === 'line' ? { ...st, a: move(st.a), b: move(st.b) } : { ...st, c: move(st.c) }),
+        (st): Stroke =>
+          st.kind === 'line' ? { ...st, a: move(st.a), b: move(st.b) } : { ...st, c: move(st.c), r: st.r * grow },
       ),
       frame: { origin: move(origin), apex: move(apex), base: move(base), open: false },
-      disc: { c: pt(left + step(unit), top + rowHeight(unit) / 2), r: (HEIGHT / 2) * unit },
+      disc: { c: centre, r: step(unit) },
     };
   }
 
@@ -196,16 +233,24 @@ export function draw(tile: Tile, tokens: readonly Token[], unit: number): Drawn 
     };
   }
 
-  // Upright glyphs keep their designed size; small sideways ones are scaled to the height of the row.
-  const k = dir === 'up' || dir === 'down' ? 1 : HEIGHT / BASE;
+  if (dir === 'left' || dir === 'right') {
+    // On the line: the middle of the base on one point, the apex on the next, a base away.
+    const [x0, x1] = [left, left + 2 * step(unit)];
+    const half = (BASE / 2) * unit;
+    const target =
+      dir === 'right'
+        ? { origin: pt(x0, top - half), base: pt(x0, top + half), apex: pt(x1, top) }
+        : { origin: pt(x1, top + half), base: pt(x1, top - half), apex: pt(x0, top) };
+    return { strokes: mapStrokes(built.strokes, built.frame, target, 1), frame: { ...target, open } };
+  }
+
+  // Upright glyphs keep their designed size, in the triangle of the lattice that points their way.
   const xs = [origin.x, apex.x, base.x];
   const ys = [origin.y, apex.y, base.y];
-  // A glyph pointing left has its base at the right of its place; the others start at the left.
-  const anchorX = dir === 'left' ? left + 2 * step(unit) - (Math.max(...xs) - Math.min(...xs)) * k : left;
-  const move = (p: Point) => pt(anchorX + (p.x - Math.min(...xs)) * k, top + (p.y - Math.min(...ys)) * k);
+  const move = (p: Point) => pt(left + p.x - Math.min(...xs), top + p.y - Math.min(...ys));
   return {
     strokes: built.strokes.map(
-      (st): Stroke => (st.kind === 'line' ? { ...st, a: move(st.a), b: move(st.b) } : { ...st, c: move(st.c), r: st.r * k }),
+      (st): Stroke => (st.kind === 'line' ? { ...st, a: move(st.a), b: move(st.b) } : { ...st, c: move(st.c) }),
     ),
     frame: { origin: move(origin), apex: move(apex), base: move(base), open },
   };
@@ -238,16 +283,9 @@ function cellAt(p: Point, unit: number): { k: number; row: number; depth: number
   return undefined;
 }
 
-/** True when two tiles are next to each other: within two bases sideways, in touching rows. */
-function beside(a: Tile, b: Tile): boolean {
-  const gap = Math.max(a.k, b.k) - Math.min(a.k + span(a).steps, b.k + span(b).steps);
-  const rows = Math.max(a.row, b.row) - Math.min(a.row + span(a).rows, b.row + span(b).rows);
-  return gap <= 4 && rows <= 0;
-}
-
 /**
  * The first rule an arrangement breaks, if any. With `loose`, glyphs need not
- * be next to each other (used while a line is still being laid out).
+ * touch (used while an arrangement is still being laid out).
  */
 export function check(
   tiles: readonly Tile[],
@@ -287,7 +325,7 @@ export function check(
       while (queue.length > 0) {
         const at = queue.pop()!;
         for (const t of mine) {
-          if (!reached.has(t) && beside(t, at)) {
+          if (!reached.has(t) && (touching(t, at, tokens) || beside(t, at, tokens))) {
             reached.add(t);
             queue.push(t);
           }
@@ -297,7 +335,7 @@ export function check(
       if (stray) {
         return {
           rule: 'apart',
-          message: `That would leave ${label(stray)} cut off from the rest of its word.`,
+          message: `That would leave ${label(stray)} away from the rest of its word.`,
           tiles: [stray.index],
         };
       }
@@ -405,34 +443,70 @@ export function check(
   return undefined;
 }
 
+/** Height of a glyph's middle, in rows, for judging what is level with what. */
+function middle(tile: Tile, tokens: readonly Token[]): number {
+  if (onLine(tile, tokens)) return tile.row;
+  return tile.row + (tile.large ? 1 : 0.5);
+}
+
 /**
- * The starting arrangement: one row, each glyph as close to the one before
- * as the rules allow. Triangles pointing up and down nestle by themselves.
+ * The starting arrangement. Each glyph is put against the one before it,
+ * touching it at a point of the lattice: level with it where the rules
+ * allow, so that triangles pointing up and down nestle. Two habits show the
+ * shape of a word: a leading vowel by itself stands a row above the root,
+ * and a word of two glyphs steps down from the first to the second.
  */
 export function lineUp(tokens: readonly Token[], unit = 1): Tile[] {
   const tiles: Tile[] = [];
+  const words: number[][] = [];
+  tokens.forEach((t, index) => {
+    if (!isGlyph(t)) words.push([]);
+    else if (words.length === 0) words.push([index]);
+    else words[words.length - 1].push(index);
+  });
   let word = 0;
   let from = 0;
-  tokens.forEach((t, index) => {
-    if (!isGlyph(t)) {
-      if (tiles.length > 0 && tiles[tiles.length - 1].word === word) {
-        word++;
-        from = Math.max(...tiles.map((p) => p.k + span(p).steps)) + WORD_GAP;
+  for (const glyphs of words.filter((w) => w.length > 0)) {
+    const lead = tokens[glyphs[0]];
+    const prefixed = lead.kind === 'syllable' && lead.consonants.length === 0 && glyphs.length > 2;
+    glyphs.forEach((index, j) => {
+      const before = j > 0 ? tiles[tiles.length - 1] : undefined;
+      const steppingDown = j === 1 && (prefixed || glyphs.length === 2);
+      let best: Tile | undefined;
+      let bestCost = Infinity;
+      const consider = (k: number, row: number, mustTouch: boolean) => {
+        const tile: Tile = { index, word, k, row };
+        if (!fits(tile, tokens)) return;
+        if (before && mustTouch && !touching(before, tile, tokens)) return;
+        let cost: number;
+        if (!before) cost = Math.abs(middle(tile, tokens) - 0.5) * 10 + (k - from);
+        else {
+          const dy = middle(tile, tokens) - middle(before, tokens);
+          const dk = k - before.k;
+          cost = steppingDown ? Math.abs(dy - 1) * 10 + Math.abs(dk - 1) : Math.abs(dy) * 10 + dk;
+        }
+        if (cost >= bestCost || check([...tiles, tile], tokens, unit, true)) return;
+        [best, bestCost] = [tile, cost];
+      };
+      if (!before) {
+        for (let k = from; k < from + 8; k++) for (const row of [0, 1]) consider(k, row, false);
+      } else {
+        for (let k = before.k; k <= before.k + 6; k++) {
+          for (let row = before.row - 2; row <= before.row + 3; row++) consider(k, row, true);
+        }
+        // Nothing can touch it there (a mark is in the way on every side): stand as near as the rules allow.
+        if (!best) {
+          for (let k = before.k + 1; k <= before.k + 16; k++) {
+            for (let row = before.row - 1; row <= before.row + 1; row++) consider(k, row, false);
+          }
+        }
       }
-      return;
-    }
-    for (let k = from; k < from + 16; k++) {
-      const tile: Tile = { index, word, k, row: 0 };
-      if (!fits(tile, tokens) || check([...tiles, tile], tokens, unit, true)) continue;
-      tiles.push(tile);
-      from = k + 1;
-      return;
-    }
-    // Nothing fitted nearby (it should not happen): give it clear room.
-    tiles.push({ index, word, k: from + 16 + (fits({ index, word, k: from + 16, row: 0 }, tokens) ? 0 : 1), row: 0 });
-    from = tiles[tiles.length - 1].k + 1;
-  });
-  return settle(tiles, tokens, unit);
+      tiles.push(best ?? { index, word, k: (before?.k ?? from) + 20, row: 0 });
+    });
+    word++;
+    from = Math.max(...tiles.map((t) => t.k + span(t).steps)) + WORD_GAP;
+  }
+  return settle(tiles);
 }
 
 export interface Target {
@@ -501,8 +575,9 @@ export function boardLayout(
 ): BoardLayout {
   const firstK = Math.min(...tiles.map((t) => t.k));
   const lastK = Math.max(...tiles.map((t) => t.k + span(t).steps));
-  const firstRow = Math.min(...tiles.map((t) => t.row));
-  const lastRow = Math.max(...tiles.map((t) => t.row + span(t).rows));
+  // A glyph on a line reaches half a row (and a little more) above and below it.
+  const firstRow = Math.min(...tiles.map((t) => t.row - (onLine(t, tokens) ? 1 : 0)));
+  const lastRow = Math.max(...tiles.map((t) => t.row + (onLine(t, tokens) ? 1 : span(t).rows)));
   const origin = { k: firstK - margin.steps, row: firstRow - margin.rows };
   const steps = lastK - firstK + margin.steps * 2;
   const rows = lastRow - firstRow + margin.rows * 2;
@@ -511,7 +586,7 @@ export function boardLayout(
     const { strokes, frame } = draw(tile, tokens, unit);
     return {
       index: tile.index,
-      at: shift(pt(tile.k * step(unit), tile.row * rowHeight(unit))),
+      at: shift(pt(tile.k * step(unit), tile.row * rowHeight(unit) - (onLine(tile, tokens) ? (BASE / 2) * unit : 0))),
       advance: span(tile).steps * step(unit),
       strokes: strokes.map(
         (st): Stroke => (st.kind === 'line' ? { ...st, a: shift(st.a), b: shift(st.b) } : { ...st, c: shift(st.c) }),
