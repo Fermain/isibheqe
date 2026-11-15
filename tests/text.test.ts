@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderSvg, strokePaths } from '../src/core/svg';
 import { deserialize, layout, lineHeight, serialize, type Token } from '../src/core/text';
+import { transcribeXhosa } from '../src/input/xhosa';
 import { transcribeZulu } from '../src/input/zulu';
 
 const read = (text: string) =>
@@ -123,5 +124,54 @@ describe('marks and frames', () => {
     const glossed = layout(tokens, 3, Infinity, true);
     expect(glossed.height).toBeGreaterThan(plain.height);
     expect(renderSvg(glossed, { unit: 3, labels: () => 'hle' })).toContain('>hle</text>');
+  });
+});
+
+describe('isiXhosa transcription', () => {
+  const xh = (text: string) =>
+    transcribeXhosa(text).tokens.map((t) =>
+      t.kind === 'syllable' ? t.consonants.join('') + t.vowel : t.kind === 'syllabic' ? t.letter : ' ',
+    );
+
+  it('reads what isiXhosa shares with isiZulu the same way', () => {
+    for (const text of ['molo', 'amanzi', 'umntwana', 'iqhawe', 'pha pa bha ba', 'ingwe']) {
+      expect(transcribeXhosa(text)).toEqual(transcribeZulu(text));
+    }
+  });
+
+  it('reads the palatal stops', () => {
+    expect(xh('tyha tya dya')).toEqual(['ca', ' ', 'c•a', ' ', 'c-a']);
+    expect(xh('ukutya')).toEqual(['u', 'k•u', 'c•a']);
+    expect(xh('intyatyambo')).toEqual(['i', '°c•a', 'c•a', '°p-•ɔ']);
+    expect(xh('indyebo')).toEqual(['i', '°c-•ɛ', 'p-•ɔ']);
+  });
+
+  it('reads rh, gr and kr', () => {
+    expect(xh('irhafu')).toEqual(['i', 'xa', 'fu']);
+    expect(xh('igrogro')).toEqual(['i', 'x-ɔ', 'x-ɔ']);
+    expect(xh('ukukrazula')).toEqual(['u', 'k•u', 'kx•a', 's-u', 'la']);
+    expect(xh('irayisi')).toEqual(['i', 'ra', 'ji', 'si']);
+  });
+
+  it('tells the aspirated affricates from the ejective ones', () => {
+    expect(xh('thsa tsa dza')).toEqual(['tsa', ' ', 'ts•a', ' ', 'ts-a']);
+    expect(xh('thsha tsha ja')).toEqual(['ʃta', ' ', 'ʃt•a', ' ', 'ʃt-a']);
+  });
+
+  it("reads ng' as the velar nasal and keeps its spelling in the reading", () => {
+    const { tokens, unread } = transcribeXhosa("ing'ang'ane ingoma");
+    expect(xh("ing'ang'ane ingoma")).toEqual(['i', 'ŋa', 'ŋa', 'nɛ', ' ', 'i', '°k-•ɔ', '°a']);
+    expect(tokens[1]).toMatchObject({ source: "ng'a" });
+    expect(unread).toEqual([]);
+  });
+
+  it('reads tl and the breathy nasals (both by analogy)', () => {
+    expect(xh('intloko')).toEqual(['i', '°tɬ•ɔ', 'k•ɔ']);
+    expect(xh('nyhani')).toEqual(['ɲ-a', 'ni']);
+    expect(xh('umhambi')).toEqual(['u', 'm̩', 'ha', '°p-•i']);
+  });
+
+  it('writes the name of the language', () => {
+    expect(xh('isiXhosa')).toEqual(['i', 'si', '||ɔ', 'sa']);
   });
 });

@@ -300,6 +300,21 @@ textarea {
   font: 0.85rem/1.5 var(--mono);
 }
 
+.language {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+select {
+  padding: 0.4rem 0.6rem;
+  font: 1rem var(--sans);
+  color: inherit;
+  background: var(--sheet);
+  border: var(--line);
+}
+
 label {
   font-weight: 600;
 }
