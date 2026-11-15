@@ -58,8 +58,7 @@
 
           <div class="actions">
             <div class="save" role="group" aria-label="Arrangement">
-              <button type="button" id="toggle-size">Make flat</button>
-              <button type="button" id="suggest">Suggest</button>
+              <button type="button" id="toggle-size">Make large</button>
               <button type="button" id="line-up">Back to a line</button>
             </div>
             <div id="colour-tools" class="colour-tools" role="group" aria-label="Colour">
@@ -85,36 +84,38 @@
           <h3>How it works</h3>
           <ul>
             <li>
-              Drag a glyph to another square. While you hold it, the places it may go are lit.
-              Drop it between two columns to give it a column of its own.
+              The board is a lattice of the script's own triangle. A glyph that points up fits
+              any triangle that points up, and a glyph that points down any that points down, at
+              exactly its designed size. Side by side they share a side; one above the other
+              they share a base or meet at a point.
             </li>
             <li>
-              A <b>full</b> glyph is drawn as designed and has its square to itself. A
-              <b>flat</b> glyph fills one quarter of a square, the quarter its vowel points away
-              from, so up to four can share a square. Drop a glyph onto a square that already
-              holds one and both become flat; pull it out again and they return to full size.
+              Drag a glyph to another triangle. While you hold it, the places it may go are lit.
+              The bars make room: drop on one to push the rest of the word along.
             </li>
             <li>
-              Drop a full glyph half a square to the side of its neighbour to nestle them: a
-              triangle pointing up fits against one pointing down, as in ordinary writing.
+              e and o point sideways, which no triangle of the lattice does. They stand in the
+              row at its height, or can be made large: two rows high, with every corner on the
+              lattice.
             </li>
             <li>
               A glyph cannot be turned or mirrored: the direction of the triangle is the vowel.
             </li>
             <li>
-              Read each word column by column, each column from the top, and each square left,
-              top, bottom, right. The board refuses any move that would change that reading, put
-              one glyph's marks inside another, or close the open side of u, e or o.
+              Read each word from left to right, and from the top where two glyphs start at the
+              same place. The board refuses any move that would change that reading, make two
+              glyphs overlap, put one glyph's marks where they could be read as another's, or
+              close the open side of u, e or o. After each move it closes up any space left
+              behind.
             </li>
             <li>
               By keyboard: with the board in focus, <kbd>[</kbd> and <kbd>]</kbd> choose a glyph,
-              the arrow keys move it, and <kbd>F</kbd> switches it between flat and full.
+              the arrow keys move it, and <kbd>F</kbd> switches e and o between small and large.
             </li>
           </ul>
           <p class="note">
-            The squares, the flat form and these rules are this site's own, after the coloured
-            rendering of the script's name on Wikipedia. They are not part of the script as
-            published.
+            The lattice, the two sizes of e and o, and these rules are this site's own. They
+            are not part of the script as published.
           </p>
         </div>
       </section>

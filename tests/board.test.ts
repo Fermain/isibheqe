@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { check, draw, lineUp, normalise, suggest, targets, type Tile } from '../src/core/board';
+import { check, draw, lineUp, normalise, settle, targets, type Tile } from '../src/core/board';
+import { HEIGHT } from '../src/core/geometry';
 import { transcribeZulu } from '../src/input/zulu';
 
 const board = (text: string) => {
@@ -12,139 +13,100 @@ const put = (tiles: Tile[], n: number, change: Partial<Tile>) =>
   normalise(tiles.map((t, i) => (i === n ? { ...t, ...change } : t)));
 
 describe('the arranging board', () => {
-  it('starts every text as a legal line, with a gap between words', () => {
-    const { tokens, tiles } = board('hamba kahle');
-    expect(tiles.map((t) => t.col)).toEqual([0, 1, 3, 4]);
-    expect(check(tiles, tokens)).toBeUndefined();
+  it('starts every text as a legal line', () => {
     const src = readFileSync('src/pages/check-sheet.ts', 'utf8');
     for (const [, words] of src.matchAll(/\['([^']+)', ["']/g)) {
       const b = board(words);
+      expect(b.tiles.length, words).toBeGreaterThan(0);
       expect(check(b.tiles, b.tokens), words).toBeUndefined();
-      expect(check(suggest(b.tokens), b.tokens), words).toBeUndefined();
+      expect(b.tiles.every((t) => t.row === 0), words).toBe(true);
     }
   });
 
-  it('draws a full glyph as large as its square allows, with its base on the edge', () => {
-    const { tokens, tiles } = board('sawubo');
-    const [sa, wu, bo] = tiles.map((t) => draw(t, tokens, 1).frame);
-    // "sa" points down: its base runs along the top of square 0, corner to corner
-    expect([sa.base.x, sa.base.y, sa.origin.x, sa.origin.y]).toEqual([0, 0, 16, 0]);
-    // "wu" points up: its base runs along the bottom of square 1
-    expect([wu.origin.x, wu.origin.y, wu.base.x]).toEqual([16, 16, 32]);
-    // "bo" points right: its base is the whole left side of square 2
-    expect([bo.origin.x, bo.origin.y, bo.base.y]).toEqual([32, 0, 16]);
+  it('nestles triangles that point up and down, by itself, at their designed size', () => {
+    const { tokens, tiles } = board('sawu');
+    // "sa" points down, "wu" up: one step apart, sharing a side
+    expect(tiles.map((t) => t.k)).toEqual([1, 2]);
+    const [sa, wu] = tiles.map((t) => draw(t, tokens, 1).frame);
+    expect(sa.origin.x - sa.base.x).toBeCloseTo(16);
+    expect(sa.apex.y - sa.base.y).toBeCloseTo(HEIGHT);
+    // the right side of "sa" is the left side of "wu"
+    expect([sa.apex.x, sa.apex.y]).toEqual([wu.origin.x, wu.origin.y]);
+    expect([sa.origin.x, sa.origin.y]).toEqual([wu.apex.x, wu.apex.y]);
   });
 
-  it('lets flat glyphs share a square, quarter by quarter', () => {
-    const { tokens, tiles } = board('khotasike');
-    const flat = tiles.map((t) => ({ ...t, size: 'flat' as const, col: 0 }));
-    expect(check(normalise(flat), tokens)).toBeUndefined();
+  it('keeps two triangles that point the same way a whole base apart', () => {
+    const { tiles } = board('sasa');
+    expect(tiles[1].k - tiles[0].k).toBe(2);
   });
 
-  it('refuses a quarter that is taken, and company for a full glyph', () => {
+  it('only lets an upright glyph into a triangle that points its way', () => {
     const { tokens, tiles } = board('sasa');
-    const both = tiles.map((t) => ({ ...t, size: 'flat' as const, col: 0 }));
-    expect(check(normalise(both), tokens)?.rule).toBe('taken');
-    expect(check(put(tiles, 1, { col: 0 }), tokens)?.rule).toBe('taken');
+    expect(check(tiles.map((t, i) => (i === 1 ? { ...t, k: t.k + 1 } : t)), tokens)?.rule).toBe('lattice');
+    expect(targets(tiles, tokens, tiles[1].index).every((t) => (t.k + t.row) % 2 !== 0)).toBe(true);
+  });
+
+  it('stacks an i on an a, base to base, and an a on an i, point to point', () => {
+    const diamond = board('sika');
+    const stacked = put(diamond.tiles, 1, { k: diamond.tiles[0].k, row: 1 });
+    expect(check(stacked, diamond.tokens)).toBeUndefined();
+    const hourglass = board('kasi');
+    const pointed = put(hourglass.tiles, 1, { k: hourglass.tiles[0].k, row: 1 });
+    expect(check(pointed, hourglass.tokens)).toBeUndefined();
   });
 
   it('refuses an arrangement that would be read in another order', () => {
     const { tokens, tiles } = board('sika');
-    // ka above si in one column: ka would be read first
-    expect(check(put(tiles, 1, { col: 0, row: -1 }), tokens)?.rule).toBe('order');
-    // si above ka is fine
-    expect(check(put(tiles, 1, { col: 0, row: 1 }), tokens)).toBeUndefined();
-    // flat in one square: a (top) is read before i (bottom)
-    const flat = tiles.map((t) => ({ ...t, size: 'flat' as const, col: 0 }));
-    expect(check(normalise(flat), tokens)?.rule).toBe('order');
-  });
-
-  it('refuses marks that land inside a neighbour', () => {
-    const { tokens, tiles } = board('nosi');
-    // flat "no" has its circle in the middle of the square, at the tip of "si"
-    const flat = tiles.map((t) => ({ ...t, size: 'flat' as const, col: 0 }));
-    expect(check(normalise(flat), tokens)?.rule).toBe('trespass');
+    expect(check(put(tiles, 1, { k: tiles[0].k, row: -1 }), tokens)?.rule).toBe('order');
   });
 
   it('refuses a line that closes an open vowel', () => {
     const { tokens, tiles } = board('suka');
-    const stacked = normalise([
-      { ...tiles[0], size: 'flat' },
-      { ...tiles[1], size: 'flat', col: 0, row: 1 },
-    ]);
-    expect(check(stacked, tokens)?.rule).toBe('closed');
-    const { tokens: ok, tiles: okTiles } = board('sika');
-    const diamond = normalise([
-      { ...okTiles[0], size: 'flat' },
-      { ...okTiles[1], size: 'flat', col: 0, row: 1 },
-    ]);
-    expect(check(diamond, ok)).toBeUndefined();
+    expect(check(put(tiles, 1, { k: tiles[0].k, row: 1 }), tokens)?.rule).toBe('closed');
+  });
+
+  it('refuses marks that would be read as a neighbour’s', () => {
+    // the bar of "bi" lies along the top of the row, where the base of "sa" is
+    const { tokens, tiles } = board('sabi');
+    expect(tiles[1].k - tiles[0].k).toBeGreaterThan(1);
+    expect(check(tiles.map((t, i) => (i === 1 ? { ...t, k: tiles[0].k + 1 } : t)), tokens)?.rule).toBe('trespass');
   });
 
   it('refuses to cut a glyph off from its word', () => {
     const { tokens, tiles } = board('sikati');
-    expect(check(put(tiles, 2, { row: 2 }), tokens)?.rule).toBe('apart');
+    expect(check(put(tiles, 2, { row: 4 }), tokens)?.rule).toBe('apart');
+  });
+
+  it('draws sideways glyphs small in the row, or large on the lattice', () => {
+    const { tokens, tiles } = board('bo');
+    const small = draw(tiles[0], tokens, 1).frame;
+    expect(small.base.y - small.origin.y).toBeCloseTo(HEIGHT);
+    const large = draw({ ...tiles[0], large: true }, tokens, 1).frame;
+    expect(large.base.y - large.origin.y).toBeCloseTo(2 * HEIGHT);
+    expect(large.apex.x - large.origin.x).toBeCloseTo(24);
+    expect(check(normalise([{ ...tiles[0], large: true }]), tokens)).toBeUndefined();
+  });
+
+  it('closes the space a glyph leaves behind, and keeps words apart', () => {
+    const { tokens, tiles } = board('sasasa sa');
+    const spread = tiles.map((t, i) => (i >= 2 ? { ...t, k: t.k + 6 } : t));
+    expect(settle(spread, tokens)).toEqual(tiles);
+    expect(tiles[3].k - (tiles[2].k + 2)).toBeGreaterThanOrEqual(2);
   });
 
   it('offers only moves that keep the text, and always offers some', () => {
     const { tokens, tiles } = board('sawubona');
     for (const tile of tiles) {
-      const list = targets(tiles, tokens, tile.index);
-      const legal = list.filter((t) => !t.violation);
+      const legal = targets(tiles, tokens, tile.index).filter((t) => !t.violation);
       expect(legal.length).toBeGreaterThan(0);
       for (const t of legal) expect(check(t.tiles, tokens)).toBeUndefined();
     }
   });
 
-  it('nestles a full triangle pointing up against one pointing down', () => {
-    const { tokens, tiles } = board('sawusa');
-    const nestled = put(put(tiles, 1, { col: 0.5 }), 2, { col: 1 });
-    expect(nestled.map((t) => t.col)).toEqual([0, 0.5, 1]);
-    expect(check(nestled, tokens)).toBeUndefined();
-    // the move is on offer when dragging
-    expect(targets(tiles, tokens, tiles[1].index).some((t) => t.col === 0.5 && t.row === 0 && !t.violation)).toBe(true);
-  });
-
-  it('refuses to nestle triangles that would overlap or whose marks would be misread', () => {
-    // two triangles pointing the same way overlap
-    const same = board('sasa');
-    expect(check(put(same.tiles, 1, { col: 0.5 }), same.tokens)?.rule).toBe('taken');
-    // the l line of "li" lies in the gap but stays nearer to "li" than to "sa", so it is allowed
-    const l = board('sali');
-    expect(check(put(l.tiles, 1, { col: 0.5 }), l.tokens)).toBeUndefined();
-    // the p bar of "bi" would run along the top of "sa"
-    const bar = board('sabi');
-    expect(check(put(bar.tiles, 1, { col: 0.5 }), bar.tokens)?.rule).toBe('trespass');
-  });
-
-  it('flattens two glyphs when one is dropped on the other, and restores them when parted', () => {
-    const { tokens, tiles } = board('sawubona');
-    const wu = tiles[1].index;
-    const onto = targets(tiles, tokens, wu).find((t) => t.col === 0 && t.row === 0 && !t.insert)!;
-    expect(onto.violation).toBeUndefined();
-    expect(onto.tiles.map((t) => t.size)).toEqual(['flat', 'flat', 'full', 'full']);
-    expect(onto.tiles.map((t) => t.col)).toEqual([0, 0, 1, 2]);
-    // pulling it out to a column of its own gives both their full size back
-    const out = targets(onto.tiles, tokens, wu).find((t) => t.insert && t.col === 1 && t.row === 0)!;
-    expect(out.violation).toBeUndefined();
-    expect(out.tiles.map((t) => t.size)).toEqual(['full', 'full', 'full', 'full']);
-    // "bo" cannot join them: its quarter (the left) would be read before "sa"
-    const bo = targets(onto.tiles, tokens, tiles[2].index).find((t) => t.col === 0 && t.row === 0 && !t.insert)!;
-    expect(bo.violation?.rule).toBe('order');
-  });
-
-  it('keeps a glyph flat when it was made flat by hand', () => {
-    const { tokens, tiles } = board('sika');
-    const byHand = tiles.map((t, i) => (i === 0 ? { ...t, size: 'flat' as const, kept: true } : t));
-    const moved = targets(byHand, tokens, tiles[1].index).filter((t) => !t.violation);
-    expect(moved.length).toBeGreaterThan(0);
-    for (const t of moved) expect(t.tiles[0].size).toBe('flat');
-  });
-
-  it('suggests shapes where the tessellation experiment found them', () => {
-    const { tokens } = transcribeZulu('sawubona ikati');
-    const tiles = suggest(tokens);
-    expect(tiles.filter((t) => t.size === 'flat').length).toBe(4);
-    expect(check(tiles, tokens)).toBeUndefined();
+  it('is left alone by tidying once it is tidy', () => {
+    for (const text of ['sawubona mhlaba', 'umuntu ngumuntu ngabantu']) {
+      const { tokens, tiles } = board(text);
+      expect(settle(tiles, tokens)).toEqual(tiles);
+    }
   });
 });

@@ -3,14 +3,16 @@
  * into a pattern. core/board.ts holds the rules; this file is the pointer,
  * keyboard, colour and export handling around them.
  */
-import { BASE, type Point } from '../core/geometry';
+import type { Point } from '../core/geometry';
 import {
   boardLayout,
   check,
   draw,
   lineUp,
-  normalise,
-  suggest,
+  rowHeight,
+  settle,
+  sideways,
+  step,
   targets,
   type BoardLayout,
   type Target,
@@ -24,7 +26,11 @@ import { $, escapeHtml, reading, spelled } from '../ui';
 
 /** Size of the board on screen; smaller on narrow screens so a word fits. */
 const UNIT = window.innerWidth < 700 ? 4 : 6;
-const SIDE = BASE * UNIT;
+/** One step along a row, and the height of a row, on screen. */
+const STEP = step(UNIT);
+const ROW = rowHeight(UNIT);
+/** Empty lattice shown around the glyphs, to move into. */
+const MARGIN = { steps: 4, rows: 2 };
 const PAINT_SCALE = 3;
 
 interface Drag {
@@ -64,15 +70,20 @@ const tileOf = (index: number | null) => state.tiles.find((t) => t.index === ind
 
 const n = (v: number) => String(Math.round(v * 100) / 100);
 
-/** The faint lattice: every square of the view, with its diagonals. */
+/** The faint lattice: the rows, and the two sets of slanted lines that cut them into triangles. */
 function gridPath(lay: BoardLayout): string {
   let d = '';
-  for (let c = 0; c <= lay.cols; c++) d += `M${n(c * SIDE)} 0V${n(lay.height)}`;
-  for (let r = 0; r <= lay.rows; r++) d += `M0 ${n(r * SIDE)}H${n(lay.width)}`;
-  for (let c = 0; c < lay.cols; c++) {
-    for (let r = 0; r < lay.rows; r++) {
-      const [x, y] = [c * SIDE, r * SIDE];
-      d += `M${n(x)} ${n(y)}l${SIDE} ${SIDE}M${n(x + SIDE)} ${n(y)}l${-SIDE} ${SIDE}`;
+  for (let r = 0; r <= lay.rows; r++) d += `M0 ${n(r * ROW)}H${n(lay.width)}`;
+  // Points of the lattice lie on every row line, a base apart, shifted by a step on alternate rows.
+  const odd = (v: number) => ((v % 2) + 2) % 2;
+  for (let r = 0; r < lay.rows; r++) {
+    const [y0, y1] = [r * ROW, (r + 1) * ROW];
+    for (let k = -odd(lay.origin.k + lay.origin.row + r); k <= lay.steps; k += 2) {
+      // from a point on the upper line, down to the left and down to the right
+      for (const to of [k - 1, k + 1]) {
+        if (Math.min(k, to) < 0 || Math.max(k, to) > lay.steps) continue;
+        d += `M${n(k * STEP)} ${n(y0)}L${n(to * STEP)} ${n(y1)}`;
+      }
     }
   }
   return `<path class="grid" d="${d}" stroke-width="${n(UNIT / 8)}"/>`;
@@ -80,33 +91,29 @@ function gridPath(lay: BoardLayout): string {
 
 /** Where a target sits on screen: its outline and the point the pointer is measured against. */
 function targetShape(target: Target, tile: Tile, lay: BoardLayout): { d: string; centre: Point } {
-  const x = (target.col - lay.origin.col) * SIDE;
-  const y = (target.row - lay.origin.row) * SIDE;
+  const dx = -lay.origin.k * STEP;
+  const dy = -lay.origin.row * ROW;
+  const drawn = draw({ ...tile, k: target.k, row: target.row }, state.tokens, UNIT);
+  const { origin, apex, base } = drawn.frame;
+  const centre = drawn.disc
+    ? { x: drawn.disc.c.x + dx, y: drawn.disc.c.y + dy }
+    : { x: (origin.x + apex.x + base.x) / 3 + dx, y: (origin.y + apex.y + base.y) / 3 + dy };
   if (target.insert) {
-    // A new column: a bar on the line where it would open up.
-    const w = SIDE * 0.1;
+    // Making room: a bar where the glyph's left edge would be, at the height of its row.
+    const x = target.k * STEP + dx;
+    const y = target.row * ROW + dy;
+    const w = STEP * 0.18;
+    return { d: `M${n(x - w)} ${n(y + w)}h${n(w * 2)}v${n(ROW - w * 2)}h${n(-w * 2)}z`, centre: { x, y: y + ROW / 2 } };
+  }
+  if (drawn.disc) {
+    const r = drawn.disc.r;
     return {
-      d: `M${n(x - w)} ${n(y + w)}h${n(w * 2)}v${n(SIDE - w * 2)}h${n(-w * 2)}z`,
-      centre: { x, y: y + SIDE / 2 },
+      d: `M${n(centre.x - r)} ${n(centre.y)}a${n(r)} ${n(r)} 0 1 0 ${n(r * 2)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-r * 2)} 0`,
+      centre,
     };
   }
-  if (state.tokens[tile.index].kind === 'syllable') {
-    // The triangle the glyph would fill there.
-    const size = target.tiles.find((t) => t.index === tile.index)!.size;
-    const { origin, apex, base } = draw({ ...tile, size, col: target.col, row: target.row }, state.tokens, UNIT).frame;
-    const dx = -lay.origin.col * SIDE;
-    const dy = -lay.origin.row * SIDE;
-    const at = (p: Point) => `${n(p.x + dx)} ${n(p.y + dy)}`;
-    return {
-      d: `M${at(origin)}L${at(apex)}L${at(base)}z`,
-      centre: { x: (origin.x + apex.x + base.x) / 3 + dx, y: (origin.y + apex.y + base.y) / 3 + dy },
-    };
-  }
-  const inset = SIDE * 0.08;
-  return {
-    d: `M${n(x + inset)} ${n(y + inset)}h${n(SIDE - inset * 2)}v${n(SIDE - inset * 2)}h${n(inset * 2 - SIDE)}z`,
-    centre: { x: x + SIDE / 2, y: y + SIDE / 2 },
-  };
+  const at = (p: Point) => `${n(p.x + dx)} ${n(p.y + dy)}`;
+  return { d: `M${at(origin)}L${at(apex)}L${at(base)}z`, centre };
 }
 
 function paintFills(lay: BoardLayout, list: Fill[], unit: number, scale: number): Painted | undefined {
@@ -126,7 +133,7 @@ function render(): void {
     view = undefined;
     surface.innerHTML = '<p class="empty">Type a word above.</p>';
   } else {
-    const lay = boardLayout(tiles, tokens, UNIT, 1);
+    const lay = boardLayout(tiles, tokens, UNIT, MARGIN);
     let underlay = gridPath(lay);
     if (drag) {
       const tile = tileOf(drag.index)!;
@@ -157,9 +164,8 @@ function render(): void {
 
   const chosen = tileOf(state.selected);
   const button = $<HTMLButtonElement>('toggle-size');
-  const fixed = !chosen || tokens[chosen.index].kind !== 'syllable';
-  button.disabled = fixed;
-  button.textContent = chosen?.size === 'flat' ? 'Make full size' : 'Make flat';
+  button.disabled = !chosen || !sideways(chosen, tokens);
+  button.textContent = chosen?.large ? 'Make small' : 'Make large';
 
   const unread = $('unread');
   unread.hidden = state.unread.length === 0;
@@ -173,7 +179,7 @@ function render(): void {
 
 /** Apply an arrangement if it breaks no rule; otherwise say which rule and leave things be. */
 function attempt(next: Tile[]): boolean {
-  const tidy = normalise(next);
+  const tidy = settle(next, state.tokens);
   const violation = check(tidy, state.tokens);
   if (violation) {
     say(violation.message);
@@ -194,10 +200,10 @@ function toBoard(event: PointerEvent | MouseEvent): Point | undefined {
   };
 }
 
-/** Take up a new arrangement. Colour on a glyph whose outline changed would not fit, and is dropped. */
+/** Take up a new arrangement. Colour on a glyph whose size changed would not fit, and is dropped. */
 function adopt(next: Tile[]): void {
-  const before = new Map(state.tiles.map((t) => [t.index, t.size]));
-  const changed = new Set(next.filter((t) => before.get(t.index) !== t.size).map((t) => t.index));
+  const before = new Map(state.tiles.map((t) => [t.index, !!t.large]));
+  const changed = new Set(next.filter((t) => before.get(t.index) !== !!t.large).map((t) => t.index));
   state.fills = state.fills.filter((f) => !changed.has(f.index));
   state.tiles = next;
 }
@@ -207,7 +213,7 @@ let press: { index: number; from: Point; clientX: number; clientY: number } | un
 surface.addEventListener('pointerdown', (event) => {
   const at = toBoard(event);
   if (!at || !view || state.brush) return;
-  const glyph = glyphAt(view.lay, at.x, at.y, SIDE);
+  const glyph = glyphAt(view.lay, at.x, at.y, ROW);
   if (!glyph) return;
   press = { index: glyph.index, from: at, clientX: event.clientX, clientY: event.clientY };
   surface.setPointerCapture(event.pointerId);
@@ -237,7 +243,7 @@ surface.addEventListener('pointermove', (event) => {
   // The nearest place, allowed or not; it is lit only if it is allowed.
   const tile = tileOf(drag.index)!;
   let best = -1;
-  let bestDistance = SIDE * 0.75;
+  let bestDistance = STEP * 1.2;
   drag.list.forEach((target, i) => {
     const { centre } = targetShape(target, tile, view!.lay);
     const d = Math.hypot(centre.x - at.x, centre.y - at.y);
@@ -294,19 +300,25 @@ surface.addEventListener('keydown', (event) => {
   if (!step) return;
   event.preventDefault();
   const [dc, dr] = step;
-  // Sideways: half a square, else a whole one, else a new column on that side.
-  const wanted: [col: number, row: number, insert: boolean][] =
+  // Sideways: one step, else a whole base, else the same while making room. Up or down: one row,
+  // with a step to either side, since the triangle straight above or below points the other way.
+  const wanted: [k: number, row: number, insert: boolean][] =
     dc === 0
-      ? [[tile.col, tile.row + dr, false]]
+      ? [
+          [tile.k, tile.row + dr, false],
+          [tile.k - 1, tile.row + dr, false],
+          [tile.k + 1, tile.row + dr, false],
+        ]
       : [
-          [tile.col + dc / 2, tile.row, false],
-          [tile.col + dc, tile.row, false],
-          [tile.col + (dc > 0 ? 1 : 0), tile.row, true],
+          [tile.k + dc, tile.row, false],
+          [tile.k + dc * 2, tile.row, false],
+          [tile.k + dc, tile.row, true],
+          [tile.k + dc * 2, tile.row, true],
         ];
   const list = targets(state.tiles, state.tokens, tile.index);
   let refused: string | undefined;
-  for (const [col, row, insert] of wanted) {
-    const target = list.find((t) => t.col === col && t.row === row && t.insert === insert);
+  for (const [k, row, insert] of wanted) {
+    const target = list.find((t) => t.k === k && t.row === row && t.insert === insert);
     if (target && !target.violation) {
       adopt(target.tiles);
       render();
@@ -319,26 +331,21 @@ surface.addEventListener('keydown', (event) => {
 
 function toggleSize(): void {
   const tile = tileOf(state.selected);
-  if (!tile || state.tokens[tile.index].kind !== 'syllable') return;
-  // Flat by hand stays flat, even alone in its square.
-  const size = tile.size === 'flat' ? 'full' : 'flat';
-  if (attempt(state.tiles.map((t) => (t === tile ? { ...t, size, kept: size === 'flat' } : t)))) {
-    // Colour was placed on the old outline and would not fit the new one.
-    state.fills = state.fills.filter((f) => f.index !== tile.index);
+  if (!tile || !sideways(tile, state.tokens)) return;
+  // Large is two rows high and a step longer; try it where it stands, then a step to either side.
+  for (const k of [tile.k, tile.k - 1, tile.k + 1]) {
+    const next = state.tiles.map((t) => (t === tile ? { ...t, large: !tile.large, k } : t));
+    if (!check(settle(next, state.tokens), state.tokens)) {
+      adopt(settle(next, state.tokens));
+      render();
+      return;
+    }
   }
+  attempt(state.tiles.map((t) => (t === tile ? { ...t, large: !tile.large } : t)));
   render();
 }
 
 $('toggle-size').addEventListener('click', toggleSize);
-
-$('suggest').addEventListener('click', () => {
-  const tiles = suggest(state.tokens);
-  const joined = tiles.some((t) => t.size === 'flat');
-  state.tiles = tiles;
-  state.fills = [];
-  say(joined ? 'A starting point. Move things from here.' : 'Nothing in this text joins up by itself. Try it by hand.');
-  render();
-});
 
 $('line-up').addEventListener('click', () => {
   state.tiles = lineUp(state.tokens);
@@ -399,7 +406,7 @@ surface.addEventListener('click', (event) => {
     if (owner > 0) state.fills.splice(owner - 1, 1);
   }
   if (state.brush === 'erase') return render();
-  const glyph = glyphAt(lay, at.x, at.y, SIDE);
+  const glyph = glyphAt(lay, at.x, at.y, ROW);
   if (!glyph) return say('Choose a spot inside a glyph to colour it.');
   const fill: Fill = {
     index: glyph.index,
@@ -441,7 +448,7 @@ function exportSvg(scale = 1): string | undefined {
     say('Nothing to save yet.');
     return undefined;
   }
-  const lay = boardLayout(state.tiles, state.tokens, EXPORT_UNIT, 0.5);
+  const lay = boardLayout(state.tiles, state.tokens, EXPORT_UNIT, { steps: 1, rows: 1 });
   const pad = svgPadding(EXPORT_UNIT);
   const painted = paintFills(lay, [...state.fills], EXPORT_UNIT, 4);
   const underlay = painted
