@@ -17,8 +17,8 @@ describe('tessellated layout', () => {
   it('shares a square between syllables whose quarters follow in reading order', () => {
     // o (left) then a (top) then i (bottom) then e (right)
     expect(cells('khotasike')).toEqual([['kho', 'ta', 'si', 'ke']]);
-    // i (bottom) cannot be followed by a (top) in the same square
-    expect(cells('sika')).toEqual([['si'], ['ka']]);
+    // i (bottom) cannot be followed by e's neighbour o (left) in the same square
+    expect(cells('sitho')).toEqual([['si'], ['tho']]);
     expect(cells('kasi')).toEqual([['ka', 'si']]);
   });
 
@@ -40,10 +40,11 @@ describe('tessellated layout', () => {
   it('makes the four apexes of a full square meet in its middle', () => {
     const { tokens } = transcribeZulu('khotasike');
     const lay = tessellate(tokens, 3);
-    const centre = { x: (BASE * 3) / 2, y: 3 * 4 + (BASE * 3) / 2 };
+    const [first] = lay.glyphs;
+    expect(first.frame.apex.x).toBeCloseTo((BASE * 3) / 2);
     for (const g of lay.glyphs) {
-      expect(g.frame.apex.x).toBeCloseTo(centre.x);
-      expect(g.frame.apex.y).toBeCloseTo(centre.y);
+      expect(g.frame.apex.x).toBeCloseTo(first.frame.apex.x);
+      expect(g.frame.apex.y).toBeCloseTo(first.frame.apex.y);
     }
   });
 
@@ -61,20 +62,32 @@ describe('tessellated layout', () => {
     }
   });
 
-  it('draws a glyph that stands alone at its designed size', () => {
-    const { tokens } = transcribeZulu('na');
-    const [alone] = tessellate(tokens, 3).glyphs;
-    const [designed] = layout(tokens, 3).glyphs;
-    const height = (g: typeof alone) => Math.abs(g.frame.apex.y - g.frame.origin.y);
-    expect(height(alone)).toBeCloseTo(height(designed));
+  it('draws a word with no shapes exactly as the ordinary line does', () => {
+    const { tokens } = transcribeZulu('sanibonani hamba kahle');
+    const plain = layout(tokens, 3);
+    const lay = tessellate(tokens, 3);
+    expect(lay.glyphs.map((g) => g.strokes)).toEqual(plain.glyphs.map((g) => g.strokes));
+    expect(lay.width).toBeCloseTo(plain.width);
   });
 
-  it('sets the squares of a word closer together than two words', () => {
-    const gap = (text: string) => {
-      const [a, b] = tessellate(transcribeZulu(text).tokens, 3).glyphs;
-      return b.at.x - (a.at.x + a.advance);
-    };
-    expect(gap('sika')).toBeLessThan(gap('si ka') / 4);
+  it('stacks an i syllable on the a syllable that follows it', () => {
+    expect(cells('sika')).toEqual([['si', 'ka']]);
+    expect(cells('nina')).toEqual([['ni', 'na']]);
+    // nasals and the p bar sit on the apexes, away from the join
+    expect(cells('imbiba')).toEqual([['i'], ['mbi', 'ba']]);
+    const [upper, lower] = tessellate(transcribeZulu('sika').tokens, 3).glyphs;
+    expect(upper.frame.origin.y).toBeCloseTo(lower.frame.origin.y);
+    expect(upper.frame.apex.y).toBeLessThan(lower.frame.apex.y);
+    expect(lower.frame.apex.y - upper.frame.apex.y).toBeCloseTo(BASE * 3);
+  });
+
+  it('keeps out of a diamond anything that would be misread there', () => {
+    // u's open base would be closed by the a below, and read as i
+    expect(cells('suka')).toEqual([['su'], ['ka']]);
+    // the y mark lies beyond the base, inside the other half
+    expect(cells('siya')).toEqual([['si'], ['ya']]);
+    // a square already being filled comes first
+    expect(cells('tasika')).toEqual([['ta', 'si'], ['ka']]);
   });
 
   it('wraps whole words', () => {

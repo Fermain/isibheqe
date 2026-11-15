@@ -142,8 +142,94 @@ for (const [title, words] of GROUPS) {
       `<tr><td class="word"><b lang="zu">${escape(zulu)}</b><span>${escape(english)}${warn}</span></td>` +
       `<td class="glyphs">${draw(layout(tokens, UNIT, Infinity, true), tokens, zulu)}</td>` +
       `<td class="glyphs">${draw(tessellate(tokens, UNIT, Infinity, true), tokens, zulu)}</td>` +
-      `<td class="ok"><i></i>yes <i></i>no</td><td class="notes"></td></tr>`;
+      `<td class="ok" data-word="${escape(zulu)}">` +
+      ['yes', 'no']
+        .map(
+          (v) =>
+            `<label><input type="radio" name="ok:${escape(zulu)}" value="${v}" /> ${v}</label>`,
+        )
+        .join(' ') +
+      `</td><td class="notes"><textarea rows="2" data-word="${escape(zulu)}" ` +
+      `aria-label="Notes on ${escape(zulu)}"></textarea></td></tr>`;
   }
   html += '</tbody></table>';
 }
-document.getElementById('sheet')!.innerHTML = html;
+const sheet = document.getElementById('sheet')!;
+sheet.innerHTML = html;
+
+// ------------------------------------------------------------- answers
+// Ticks and notes are saved through the dev server to check-sheet.results.json.
+
+interface Answer {
+  ok?: 'yes' | 'no';
+  notes?: string;
+}
+type Answers = Record<string, Answer>;
+
+const ENDPOINT = '/__check-sheet';
+const saved = document.getElementById('saved')!;
+let answers: Answers = {};
+
+function show(): void {
+  for (const [word, answer] of Object.entries(answers)) {
+    const key = CSS.escape(word);
+    const radio = sheet.querySelector<HTMLInputElement>(
+      `input[name="ok:${key}"][value="${answer.ok ?? ''}"]`,
+    );
+    if (radio) radio.checked = true;
+    const notes = sheet.querySelector<HTMLTextAreaElement>(`textarea[data-word="${key}"]`);
+    if (notes) notes.value = answer.notes ?? '';
+  }
+  count();
+}
+
+function count(): void {
+  const list = Object.values(answers);
+  const yes = list.filter((a) => a.ok === 'yes').length;
+  const no = list.filter((a) => a.ok === 'no').length;
+  const total = sheet.querySelectorAll('td.ok').length;
+  document.getElementById('progress')!.textContent =
+    `${yes + no} of ${total} answered: ${yes} yes, ${no} no.`;
+}
+
+let timer = 0;
+function save(): void {
+  count();
+  saved.textContent = 'Saving…';
+  window.clearTimeout(timer);
+  timer = window.setTimeout(async () => {
+    try {
+      const response = await fetch(ENDPOINT, { method: 'POST', body: JSON.stringify(answers) });
+      saved.textContent = response.ok ? 'Saved.' : 'Could not save.';
+    } catch {
+      saved.textContent = 'Could not save: is the dev server running?';
+    }
+  }, 300);
+}
+
+sheet.addEventListener('change', (event) => {
+  const input = event.target as HTMLInputElement;
+  if (input.type !== 'radio') return;
+  const word = input.closest<HTMLElement>('td.ok')!.dataset.word!;
+  answers[word] = { ...answers[word], ok: input.value as 'yes' | 'no' };
+  save();
+});
+
+sheet.addEventListener('input', (event) => {
+  const box = event.target as HTMLTextAreaElement;
+  if (box.tagName !== 'TEXTAREA') return;
+  const word = box.dataset.word!;
+  answers[word] = { ...answers[word], notes: box.value };
+  save();
+});
+
+fetch(ENDPOINT)
+  .then((response) => response.json())
+  .then((data: Answers) => {
+    answers = data;
+    show();
+  })
+  .catch(() => {
+    saved.textContent = 'Answers cannot be saved here: open this page through the dev server.';
+    count();
+  });

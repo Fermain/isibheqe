@@ -1,3 +1,6 @@
 node_modules
 dist
 .DS_Store
+
+# Answers typed into check-sheet.html on the dev server
+check-sheet.results.json

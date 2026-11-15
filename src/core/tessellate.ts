@@ -2,35 +2,50 @@
  * An experimental second way to lay text out: tessellated, after the
  * coloured rendering of "Ditema tsa Dinoko" on the script's Wikipedia page.
  *
- * In that image every glyph is a quarter of a square cut by its diagonals.
- * The vowel decides which quarter: i and u (apex up) sit in the bottom
- * quarter, a (apex down) in the top, e and ɛ (apex left) in the right, o and
- * ɔ (apex right) in the left, so that all four apexes meet in the middle.
- * A square can hold up to four syllables.
+ * Most glyphs stand exactly where and how the ordinary line puts them. Here
+ * and there, neighbouring syllables of a word interlock into one shape, the
+ * way letters join in a ligature. Two shapes are made:
  *
- * Two things here are this experiment's own and are not taken from any
- * source:
- *   - The quarters of a square are flatter than the designed triangle
- *     (height half the base, against 13.8 : 16), so each glyph is squashed
- *     along its axis to fit. Lines keep their meeting points; circles stay
- *     round and shrink by the same factor. core/glyph.ts is not touched.
- *   - Reading order inside a square is fixed as left, top, bottom, right.
- *     A syllable joins the current square only if its quarter comes later
- *     in that order than the last one filled; otherwise it starts a new
- *     square. The image is consistent with this rule but does not state it.
+ *   - The square. Every glyph is a quarter of a square cut by its diagonals,
+ *     and the vowel decides which quarter: i and u (apex up) the bottom, a
+ *     (apex down) the top, e and ɛ (apex left) the right, o and ɔ (apex
+ *     right) the left, so that the apexes meet in the middle. Only glyphs
+ *     whose marks all lie inside their triangle can join, since anything
+ *     outside would land in a neighbour's quarter.
+ *   - The diamond. An i syllable sits on top of the a syllable that follows
+ *     it, base to base, as "di" sits on "ma" in the image. Marks on or
+ *     beyond the apex point away from the join, so nasals and the p bar are
+ *     welcome; only marks beyond the base are not. u cannot take i's place:
+ *     its open base would be closed by the a below and it would read as i.
  *
- * A glyph with marks outside its triangle (a nasal circle on the apex, the
- * p bar, l, j …) would run into its neighbours, so it stands alone, as "ma"
- * and "no" do in the image. Words always start a new square.
+ * Three things here are this experiment's own and come from no source:
+ *   - Flattening. Both shapes need triangles half as high as they are wide
+ *     (the designed triangle is 13.8 : 16), so a glyph that joins a shape is
+ *     squashed along its axis. Lines keep their meeting points; circles stay
+ *     round and shrink by the same factor. core/glyph.ts is not touched, and
+ *     a glyph that stands alone is not flattened.
+ *   - Reading order inside a shape: left, top, bottom, right. A syllable
+ *     joins a square only if its quarter comes later in that order than the
+ *     last one filled. A diamond is its top, then its bottom.
+ *   - Size. Nothing in the 2015 sheet gives the size of a glyph a meaning,
+ *     which is what lets flat and full-size glyphs stand in one word.
  *
- * A glyph that stands alone is not flattened: it is drawn exactly as
- * designed. Nothing in the 2015 sheet gives the size of a glyph a meaning,
- * so flattening is used only where it lets syllables interlock. Squares are
- * set close together within a word so that a word reads as one shape.
+ * Shapes never cross a word boundary.
  */
-import { BASE, HEIGHT, add, mid, pt, scale, sub, type Frame, type Point, type Stroke } from './geometry';
+import {
+  BASE,
+  HEIGHT,
+  TONE,
+  add,
+  pt,
+  scale,
+  sub,
+  type Frame,
+  type Point,
+  type Stroke,
+} from './geometry';
 import { VOWEL_SHAPES, buildSyllabicConsonant, buildSyllable, type Built } from './glyph';
-import { glossHeight, lineHeight, rowHeight, type Layout, type Placed, type Token } from './text';
+import { glossHeight, lineHeight, rowHeight, spaceWidth, type Layout, type Placed, type Token } from './text';
 
 export type Slot = 'left' | 'top' | 'bottom' | 'right';
 const SLOT_ORDER: readonly Slot[] = ['left', 'top', 'bottom', 'right'];
@@ -38,12 +53,6 @@ const SLOT_ORDER: readonly Slot[] = ['left', 'top', 'bottom', 'right'];
 const SLOT_FOR = { right: 'left', down: 'top', up: 'bottom', left: 'right' } as const;
 
 export const squareSide = (unit: number) => BASE * unit;
-/** Room above each square, inside the row. */
-const topMargin = (unit: number) => unit * 4;
-/** Gap between the squares of one word: just enough to keep their outlines apart. */
-const squareGap = (unit: number) => unit;
-/** Gap between words. */
-const wordGap = (unit: number) => squareSide(unit);
 
 type Triangle = Pick<Frame, 'origin' | 'apex' | 'base'>;
 
@@ -143,45 +152,83 @@ function quarter(slot: Slot, x: number, y: number, side: number): Triangle {
   }
 }
 
-interface Member {
-  index: number;
-  built: Built;
-  /** The quarter it fills; undefined for a syllabic nasal, which sits in the middle. */
-  slot?: Slot;
+type Syllable = Extract<Token, { kind: 'syllable' }>;
+
+/** True when no stroke passes beyond the base side of the glyph's triangle. */
+export function clearOfBase(built: Built, slack = 0.03): boolean {
+  return built.strokes.every((stroke) =>
+    samples(stroke, 8).every((p) => local(p, built.frame)[1] >= -slack),
+  );
 }
 
-/** Sort one word's glyphs into squares. */
-function pack(tokens: readonly Token[], from: number, to: number, unit: number): Member[][] {
-  const squares: Member[][] = [];
-  let open: { members: Member[]; rank: number } | undefined;
+/** The two halves of a diamond in the square at (x, y): an up triangle on a down one. */
+function diamond(x: number, y: number, side: number): [upper: Triangle, lower: Triangle] {
+  const [l, r] = [pt(x, y + side / 2), pt(x + side, y + side / 2)];
+  return [
+    { origin: l, base: r, apex: pt(x + side / 2, y) },
+    { origin: r, base: l, apex: pt(x + side / 2, y + side) },
+  ];
+}
+
+type Shape =
+  | { kind: 'alone'; index: number }
+  | { kind: 'square'; members: { index: number; built: Built; slot: Slot }[] }
+  | { kind: 'diamond'; upper: { index: number; built: Built }; lower: { index: number; built: Built } };
+
+/** Sort one word's glyphs into shapes. */
+function pack(tokens: readonly Token[], from: number, to: number, unit: number): Shape[] {
+  const shapes: Shape[] = [];
+  let open: { shape: Extract<Shape, { kind: 'square' }>; rank: number } | undefined;
+  const build = (t: Syllable) => buildSyllable(t.vowel, t.consonants, unit);
+  const dir = (t: Token | undefined) => (t?.kind === 'syllable' ? VOWEL_SHAPES[t.vowel].dir : undefined);
+
   for (let index = from; index < to; index++) {
     const t = tokens[index];
-    if (t.kind === 'syllabic') {
-      squares.push([{ index, built: buildSyllabicConsonant(t.letter, unit) }]);
+    if (t.kind !== 'syllable') {
+      if (t.kind === 'syllabic') shapes.push({ kind: 'alone', index });
       open = undefined;
-    } else if (t.kind === 'syllable') {
-      const built = buildSyllable(t.vowel, t.consonants, unit);
-      const slot = SLOT_FOR[VOWEL_SHAPES[t.vowel].dir];
-      const rank = SLOT_ORDER.indexOf(slot);
-      const member = { index, built, slot };
-      if (!staysInside(built)) {
-        squares.push([member]);
+      continue;
+    }
+    const built = build(t);
+    const slot = SLOT_FOR[VOWEL_SHAPES[t.vowel].dir];
+    const rank = SLOT_ORDER.indexOf(slot);
+    const inside = staysInside(built);
+
+    // First choice: join the square that is being filled.
+    if (inside && open && rank > open.rank) {
+      open.shape.members.push({ index, built, slot });
+      open.rank = rank;
+      continue;
+    }
+    // Second: an i on top of the a that follows it.
+    const next = index + 1 < to ? tokens[index + 1] : undefined;
+    if (t.vowel === 'i' && next?.kind === 'syllable' && dir(next) === 'down' && clearOfBase(built)) {
+      const below = build(next);
+      if (clearOfBase(below)) {
+        shapes.push({ kind: 'diamond', upper: { index, built }, lower: { index: index + 1, built: below } });
         open = undefined;
-      } else if (open && rank > open.rank) {
-        open.members.push(member);
-        open.rank = rank;
-      } else {
-        open = { members: [member], rank };
-        squares.push(open.members);
+        index++;
+        continue;
       }
     }
+    // Otherwise it starts a square of its own if it can, or stands alone.
+    if (inside) {
+      open = { shape: { kind: 'square', members: [{ index, built, slot }] }, rank };
+      shapes.push(open.shape);
+    } else {
+      shapes.push({ kind: 'alone', index });
+      open = undefined;
+    }
   }
-  return squares;
+  // A square that never found a second member is just a glyph standing alone.
+  return shapes.map((s) =>
+    s.kind === 'square' && s.members.length === 1 ? { kind: 'alone', index: s.members[0].index } : s,
+  );
 }
 
 /**
- * Lay tokens out as tessellated squares. Returns the same shape as layout(),
- * with each glyph also carrying the number of the square it sits in.
+ * Lay tokens out with interlocking shapes. Returns the same structure as
+ * layout(); each glyph also carries the number of the shape it belongs to.
  */
 export function tessellate(
   tokens: readonly Token[],
@@ -193,6 +240,8 @@ export function tessellate(
   const extra = gloss ? glossHeight(unit) : 0;
   const step = lineHeight(unit) + extra;
   const shrink = side / 2 / (HEIGHT * unit);
+  // Shapes stand on the same baseline as the glyphs of the ordinary line.
+  const baseline = (y: number) => y + (TONE + HEIGHT + 2) * unit;
 
   const glyphs: Placed[] = [];
   let x = 0;
@@ -200,11 +249,36 @@ export function tessellate(
   let width = 0;
   let cell = 0;
 
+  /** Place the glyphs of one shape, drawn at x = 0, against what came before. */
+  const place = (drawn: { index: number; strokes: Stroke[]; frame: Frame }[]) => {
+    const xs = drawn.flatMap((g) => [
+      g.frame.origin.x,
+      g.frame.apex.x,
+      g.frame.base.x,
+      ...g.strokes.flatMap((st) => samples(st, 8).map((p) => p.x)),
+    ]);
+    const left = Math.min(...xs);
+    const advance = Math.max(...xs) - left;
+    const move = shiftBy(pt(x - left, 0));
+    for (const g of drawn) {
+      const { origin, apex, base, open } = g.frame;
+      glyphs.push({
+        index: g.index,
+        at: pt(x, y),
+        advance,
+        cell,
+        strokes: g.strokes.map(move.stroke),
+        frame: { origin: move.point(origin), apex: move.point(apex), base: move.point(base), open },
+      });
+    }
+    x += advance;
+  };
+
   let i = 0;
   while (i < tokens.length) {
     const kind = tokens[i].kind;
     if (kind === 'space') {
-      x += wordGap(unit);
+      x += spaceWidth(unit);
       i++;
       continue;
     }
@@ -216,64 +290,62 @@ export function tessellate(
     }
     let end = i;
     while (end < tokens.length && tokens[end].kind !== 'space' && tokens[end].kind !== 'newline') end++;
-    const squares = pack(tokens, i, end, unit);
-    // A square is at most a little wider than its side; this errs towards wrapping early.
-    if (x > 0 && x + squares.length * (side + squareGap(unit)) > maxWidth) {
-      x = 0;
-      y += step;
-    }
-    for (const members of squares) {
-      const top = y + topMargin(unit);
-      const centre = pt(side / 2, top + side / 2);
-      // Draw the square at x = 0 first, then slide it up against what came before.
-      const drawn = members.map(({ index, built, slot }) => {
-        if (slot && members.length > 1) {
-          const target = quarter(slot, 0, top, side);
-          return {
+    const shapes = pack(tokens, i, end, unit);
+
+    // Measure the word before placing it, so that it wraps whole.
+    const wordStart = glyphs.length;
+    const x0 = x;
+    const top = baseline(y) - side;
+    for (const shape of shapes) {
+      if (shape.kind === 'alone') {
+        // Exactly what the ordinary line would draw here.
+        const t = tokens[shape.index];
+        const at = pt(x, y);
+        const built =
+          t.kind === 'syllable'
+            ? buildSyllable(t.vowel, t.consonants, unit, at)
+            : buildSyllabicConsonant((t as Extract<Token, { kind: 'syllabic' }>).letter, unit, at);
+        glyphs.push({ index: shape.index, at, advance: built.advance, cell, strokes: built.strokes, frame: built.frame });
+        x += built.advance;
+      } else if (shape.kind === 'square') {
+        place(
+          shape.members.map(({ index, built, slot }) => {
+            const target = quarter(slot, 0, top, side);
+            return {
+              index,
+              strokes: mapStrokes(built.strokes, built.frame, target, shrink),
+              frame: { ...target, open: built.frame.open },
+            };
+          }),
+        );
+      } else {
+        const halves = diamond(0, top, side);
+        place(
+          [shape.upper, shape.lower].map(({ index, built }, n) => ({
             index,
-            strokes: mapStrokes(built.strokes, built.frame, target, shrink),
-            frame: { ...target, open: built.frame.open },
-          };
-        }
-        // A glyph with a square to itself keeps its designed proportions.
-        const { origin, apex, base, open } = built.frame;
-        const middle = slot
-          ? pt(
-              (Math.min(origin.x, apex.x, base.x) + Math.max(origin.x, apex.x, base.x)) / 2,
-              (Math.min(origin.y, apex.y, base.y) + Math.max(origin.y, apex.y, base.y)) / 2,
-            )
-          : mid(mid(origin, base), apex);
-        const move = shiftBy(sub(centre, middle));
-        return {
-          index,
-          strokes: built.strokes.map(move.stroke),
-          frame: { origin: move.point(origin), apex: move.point(apex), base: move.point(base), open },
-        };
-      });
-      const xs = drawn.flatMap((g) => [
-        g.frame.origin.x,
-        g.frame.apex.x,
-        g.frame.base.x,
-        ...g.strokes.flatMap((st) => samples(st, 8).map((p) => p.x)),
-      ]);
-      const left = Math.min(...xs);
-      const advance = Math.max(...xs) - left;
-      const move = shiftBy(pt(x - left, 0));
-      for (const g of drawn) {
-        const { origin, apex, base, open } = g.frame;
-        glyphs.push({
-          index: g.index,
-          at: pt(x, y),
-          advance,
-          cell,
-          strokes: g.strokes.map(move.stroke),
-          frame: { origin: move.point(origin), apex: move.point(apex), base: move.point(base), open },
-        });
+            strokes: mapStrokes(built.strokes, built.frame, halves[n], shrink),
+            frame: { ...halves[n], open: built.frame.open },
+          })),
+        );
       }
-      x += advance + squareGap(unit);
-      width = Math.max(width, x - squareGap(unit));
       cell++;
     }
+    if (x0 > 0 && x > maxWidth) {
+      // Too wide for what is left of this line: move the whole word down.
+      const back = shiftBy(pt(-x0, step));
+      for (let g = wordStart; g < glyphs.length; g++) {
+        const { origin, apex, base, open } = glyphs[g].frame;
+        glyphs[g] = {
+          ...glyphs[g],
+          at: back.point(glyphs[g].at),
+          strokes: glyphs[g].strokes.map(back.stroke),
+          frame: { origin: back.point(origin), apex: back.point(apex), base: back.point(base), open },
+        };
+      }
+      x -= x0;
+      y += step;
+    }
+    width = Math.max(width, x);
     i = end;
   }
 

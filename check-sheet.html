@@ -70,16 +70,37 @@
         font-size: 0.8rem;
         color: #5e5950;
       }
-      td.ok i {
-        display: inline-block;
-        width: 0.9rem;
-        height: 0.9rem;
-        margin-right: 0.2rem;
-        border: 1.5px solid #121110;
-        vertical-align: -0.15rem;
+      td.ok {
+        width: 6.5rem;
+      }
+      td.ok label {
+        margin-right: 0.4rem;
+        color: #121110;
+        font-size: 0.9rem;
       }
       td.notes {
-        width: 22%;
+        width: 24%;
+      }
+      td.notes textarea {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        font-size: 0.85rem;
+        border: 1px solid #d8d2c4;
+        padding: 0.25rem 0.4rem;
+        resize: vertical;
+      }
+      .bar {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+        padding: 0.4rem 0;
+        background: #fff;
+        border-bottom: 1.5px solid #121110;
+        font-size: 0.85rem;
       }
       @media print {
         body {
@@ -88,6 +109,12 @@
         }
         td.glyphs svg {
           height: 3.6rem;
+        }
+        .bar {
+          position: static;
+        }
+        td.notes textarea {
+          border: 0;
         }
       }
     </style>
@@ -105,6 +132,11 @@
       in order; marks that collide or become too small; a lone glyph that sits oddly beside a
       cluster.
     </p>
+    <p>
+      Your ticks and notes are saved as you go to <code>check-sheet.results.json</code> beside
+      the code, so they survive a reload and can be read back.
+    </p>
+    <div class="bar" role="status"><span id="progress"></span><span id="saved"></span></div>
     <main id="sheet"></main>
     <script type="module" src="/src/pages/check-sheet.ts"></script>
   </body>
