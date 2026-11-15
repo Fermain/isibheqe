@@ -34,8 +34,8 @@
       <div class="intro">
         <h1>Arrange</h1>
         <p class="lede">
-          Write a word, then move its glyphs into a pattern. The board only allows arrangements
-          that can still be read. An experiment.
+          Write a word, then move its glyphs into a pattern. Everything snaps to the lattice,
+          and the board tells you when an arrangement gets harder to read. An experiment.
         </p>
       </div>
 
@@ -54,6 +54,7 @@
             aria-label="The board. Choose a glyph, then use the arrow keys to move it."
           ></figure>
           <p id="reading" class="reading" aria-live="polite"></p>
+          <p id="rule" class="warning" role="status" hidden></p>
           <p id="status" class="status" role="status"></p>
 
           <div class="actions">
@@ -111,10 +112,10 @@
             </li>
             <li>
               Read each word from left to right, and from the top where two glyphs start at the
-              same place. The board refuses any move that would change that reading, make two
-              glyphs overlap, put one glyph's marks where they could be read as another's, or
-              close the open side of u, e or o. After each move it closes up any space left
-              behind.
+              same place. The board tells you when an arrangement would be harder to read: when
+              the reading order changes, two glyphs overlap, one glyph's marks could be taken
+              for another's, or the open side of u, e or o is closed. It does not stop you. The
+              places that keep every rule are lit brightly while you drag; the rest are faint.
             </li>
             <li>
               By keyboard: with the board in focus, <kbd>[</kbd> and <kbd>]</kbd> choose a glyph,

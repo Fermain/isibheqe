@@ -133,9 +133,10 @@ function render(): void {
     let underlay = gridPath(lay);
     if (drag) {
       const tile = tileOf(drag.index)!;
+      // Every place on the lattice is on offer. Those that break a rule are drawn fainter.
       drag.list.forEach((target, i) => {
-        if (target.violation) return;
-        underlay += `<path class="target" data-target="${i}" d="${targetShape(target, tile, lay).d}"/>`;
+        const kind = target.violation ? 'target doubtful' : 'target';
+        underlay += `<path class="${kind}" data-target="${i}" d="${targetShape(target, tile, lay).d}"/>`;
       });
     }
     const svg = renderSvg(lay, {
@@ -163,6 +164,12 @@ function render(): void {
   button.disabled = !chosen || !sideways(chosen, tokens);
   button.textContent = chosen?.large ? 'Make small' : 'Make large';
 
+  // The rules advise; they do not forbid. Say which one the arrangement breaks, if any.
+  const broken = tiles.length > 0 ? check(tiles, tokens) : undefined;
+  const rule = $('rule');
+  rule.hidden = !broken;
+  rule.textContent = broken ? `Harder to read as it stands: ${broken.message}` : '';
+
   const unread = $('unread');
   unread.hidden = state.unread.length === 0;
   if (state.unread.length > 0) {
@@ -173,17 +180,6 @@ function render(): void {
 
 // ------------------------------------------------------------------- moving
 
-/** Apply an arrangement if it breaks no rule; otherwise say which rule and leave things be. */
-function attempt(next: Tile[]): boolean {
-  const tidy = settle(next, state.tokens);
-  const violation = check(tidy, state.tokens);
-  if (violation) {
-    say(violation.message);
-    return false;
-  }
-  state.tiles = tidy;
-  return true;
-}
 
 function toBoard(event: PointerEvent | MouseEvent): Point | undefined {
   const svg = surface.querySelector<SVGSVGElement>('.sheet > svg');
@@ -250,7 +246,7 @@ surface.addEventListener('pointermove', (event) => {
     lifted?.setAttribute('transform', `translate(${n(at.x - drag.from.x)} ${n(at.y - drag.from.y)})`);
   }
 
-  // The nearest place, allowed or not; it is lit only if it is allowed.
+  // The nearest place on the lattice.
   const tile = tileOf(drag.index)!;
   let best = -1;
   let bestDistance = STEP * 1.2;
@@ -260,7 +256,7 @@ surface.addEventListener('pointermove', (event) => {
     if (d < bestDistance) [best, bestDistance] = [i, d];
   });
   drag.nearest = best;
-  const hot = best >= 0 && !drag.list[best].violation ? best : -1;
+  const hot = best;
   if (hot !== drag.hot) {
     surface.querySelector('.target.hot')?.classList.remove('hot');
     if (hot >= 0) surface.querySelector(`.target[data-target="${hot}"]`)?.classList.add('hot');
@@ -275,8 +271,7 @@ function release(): void {
   state.drag = null;
   if (drag) {
     const target = drag.list[drag.nearest];
-    if (target && !target.violation) adopt(target.tiles);
-    else if (target?.violation) say(target.violation.message);
+    if (target) adopt(target.tiles);
   } else if (pressed) {
     state.selected = pressed.index;
   }
@@ -324,32 +319,26 @@ surface.addEventListener('keydown', (event) => {
           [tile.k + dc * 2, tile.row],
         ];
   const list = targets(state.tiles, state.tokens, tile.index, 1, movesAlone(tile.index, event.altKey));
-  let refused: string | undefined;
-  for (const [k, row] of wanted) {
-    const target = list.find((t) => t.k === k && t.row === row);
-    if (target && !target.violation) {
-      adopt(target.tiles);
-      render();
-      return;
-    }
-    refused ??= target?.violation?.message;
-  }
-  say(refused ?? 'It cannot go any further that way.');
+  // The first of those places that breaks no rule, or failing that the first there is.
+  const found = wanted
+    .map(([k, row]) => list.find((t) => t.k === k && t.row === row))
+    .filter((t): t is Target => !!t);
+  const target = found.find((t) => !t.violation) ?? found[0];
+  if (target) adopt(target.tiles);
+  else say('It cannot go any further that way.');
+  render();
 });
 
 function toggleSize(): void {
   const tile = tileOf(state.selected);
   if (!tile || !sideways(tile, state.tokens)) return;
-  // Large is two rows high and a step longer; try it where it stands, then a step to either side.
-  for (const k of [tile.k, tile.k - 1, tile.k + 1]) {
-    const next = state.tiles.map((t) => (t === tile ? { ...t, large: !tile.large, k } : t));
-    if (!check(settle(next, state.tokens), state.tokens)) {
-      adopt(settle(next, state.tokens));
-      render();
-      return;
-    }
-  }
-  attempt(state.tiles.map((t) => (t === tile ? { ...t, large: !tile.large } : t)));
+  // Large is two rows high and a step longer, and sits on other points of the lattice:
+  // try it where it stands, then a step to either side, and take the first that breaks no rule.
+  const options = [tile.k, tile.k - 1, tile.k + 1]
+    .map((k) => settle(state.tiles.map((t) => (t === tile ? { ...t, large: !tile.large, k } : t))))
+    .filter((tiles) => check(tiles, state.tokens)?.rule !== 'lattice');
+  const next = options.find((tiles) => !check(tiles, state.tokens)) ?? options[0];
+  if (next) adopt(next);
   render();
 }
 

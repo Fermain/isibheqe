@@ -422,6 +422,18 @@ tbody th[scope='row'] {
   stroke: none;
 }
 
+.board .target.doubtful {
+  fill: none;
+  stroke: var(--groove);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.board .target.doubtful.hot {
+  fill: var(--tint);
+  stroke: var(--warn);
+}
+
 .board .target.hot {
   fill: var(--sun);
 }
