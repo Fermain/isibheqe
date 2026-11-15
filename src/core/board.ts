@@ -5,7 +5,7 @@
  * What a person may do with a glyph is move it to another square and choose
  * between two sizes. "Flat" fills the quarter of the square that its vowel
  * points away from, so flat glyphs interlock. "Full" is the designed glyph,
- * drawn a little smaller, alone in its square. A glyph can never be turned
+ * as large as its square allows, alone in its square. A glyph can never be turned
  * or mirrored: in this script the direction of the triangle is the vowel.
  *
  * A glyph may also sit half a square to the side of its neighbour. That is
@@ -56,8 +56,6 @@ export interface Violation {
   tiles: number[];
 }
 
-/** How much smaller than designed a full glyph is drawn, to leave room around it. */
-const FULL_SCALE = 0.8;
 const side = (unit: number) => BASE * unit;
 
 const isGlyph = (t: Token | undefined): t is Extract<Token, { kind: 'syllable' | 'syllabic' }> =>
@@ -149,6 +147,12 @@ export function suggest(tokens: readonly Token[], unit = 1): Tile[] {
   return check(tidy, tokens, unit) ? lineUp(tokens) : tidy;
 }
 
+/** Points all along a stroke, close enough together to test where it runs. */
+function along(st: Stroke): Point[] {
+  if (st.kind !== 'line') return samples(st, 16);
+  return Array.from({ length: 13 }, (_, i) => add(st.a, scale(sub(st.b, st.a), i / 12)));
+}
+
 interface Drawn {
   strokes: Stroke[];
   frame: Frame;
@@ -170,30 +174,69 @@ export function draw(tile: Tile, tokens: readonly Token[], unit: number): Drawn 
       frame: { ...target, open: built.frame.open },
     };
   }
-  const built =
-    t.kind === 'syllable'
-      ? buildSyllable(t.vowel, t.consonants, unit)
-      : buildSyllabicConsonant((t as Extract<Token, { kind: 'syllabic' }>).letter, unit);
+  if (t.kind !== 'syllable') {
+    // A syllabic nasal: its circle, as designed, in the middle of the square.
+    const built = buildSyllabicConsonant((t as Extract<Token, { kind: 'syllabic' }>).letter, unit);
+    const { origin, apex, base } = built.frame;
+    const shift = sub(add(corner, pt(s / 2, s / 2)), mid(mid(origin, base), apex));
+    const move = (p: Point) => add(p, shift);
+    return {
+      strokes: built.strokes.map(
+        (st): Stroke => (st.kind === 'line' ? { ...st, a: move(st.a), b: move(st.b) } : { ...st, c: move(st.c) }),
+      ),
+      frame: { origin: move(origin), apex: move(apex), base: move(base), open: false },
+      disc: { c: add(corner, pt(s / 2, s / 2)), r: (HEIGHT / 2) * unit },
+    };
+  }
+
+  // A full glyph: the designed form, as large as its square allows. Its base
+  // lies along the side of the square its vowel points away from, so that its
+  // corners meet the corners of the lattice and of flat glyphs beside it.
+  const built = buildSyllable(t.vowel, t.consonants, unit);
   const { origin, apex, base, open } = built.frame;
-  const centre =
-    t.kind === 'syllable'
-      ? pt(
-          (Math.min(origin.x, apex.x, base.x) + Math.max(origin.x, apex.x, base.x)) / 2,
-          (Math.min(origin.y, apex.y, base.y) + Math.max(origin.y, apex.y, base.y)) / 2,
-        )
-      : mid(mid(origin, base), apex);
-  const middle = add(corner, pt(s / 2, s / 2));
-  const move = (p: Point) => add(middle, scale(sub(p, centre), FULL_SCALE));
-  const strokes = built.strokes.map(
-    (st): Stroke =>
-      st.kind === 'line'
-        ? { ...st, a: move(st.a), b: move(st.b) }
-        : { ...st, c: move(st.c), r: st.r * FULL_SCALE },
-  );
+  const dir = VOWEL_SHAPES[t.vowel].dir;
+  const box = (points: Point[]) => ({
+    left: Math.min(...points.map((p) => p.x)),
+    right: Math.max(...points.map((p) => p.x)),
+    top: Math.min(...points.map((p) => p.y)),
+    bottom: Math.max(...points.map((p) => p.y)),
+  });
+  const triangle = box([origin, apex, base]);
+  const ink = box([origin, apex, base, ...built.strokes.flatMap((st) => samples(st, 8))]);
+  // A mark on the apex of an upright glyph may hang into the row above or
+  // below, as it does in ordinary writing. Any other mark outside the triangle
+  // has to fit inside the square, a little in from the edge.
+  if (dir === 'up') ink.top = triangle.top;
+  if (dir === 'down') ink.bottom = triangle.bottom;
+  const margin = unit * 2;
+  // Marks outside the triangle that reach its left or right edge (the l line,
+  // the bar of an upright p) would touch the glyph in the next square.
+  const loose = built.strokes
+    .flatMap(along)
+    .filter((p) => {
+      const [u, v] = local(p, built.frame);
+      return u < -0.03 || v < -0.03 || u + v > 1.03;
+    });
+  const inset = {
+    left: loose.some((p) => p.x <= triangle.left + 0.05 * unit) ? margin : 0,
+    right: loose.some((p) => p.x >= triangle.right - 0.05 * unit) ? margin : 0,
+    top: ink.top < triangle.top - 0.05 * unit ? margin : 0,
+    bottom: ink.bottom > triangle.bottom + 0.05 * unit ? margin : 0,
+  };
+  const room = { w: s - inset.left - inset.right, h: s - inset.top - inset.bottom };
+  const k = Math.min(1, room.w / (ink.right - ink.left), room.h / (ink.bottom - ink.top));
+  const [w, h] = [(ink.right - ink.left) * k, (ink.bottom - ink.top) * k];
+  // Where the top left of the (scaled) ink goes: against the base side, centred the other way.
+  const x =
+    dir === 'right' ? inset.left : dir === 'left' ? s - inset.right - w : inset.left + (room.w - w) / 2;
+  const y = dir === 'down' ? inset.top : dir === 'up' ? s - inset.bottom - h : inset.top + (room.h - h) / 2;
+  const move = (p: Point) => pt(corner.x + x + (p.x - ink.left) * k, corner.y + y + (p.y - ink.top) * k);
   return {
-    strokes,
+    strokes: built.strokes.map(
+      (st): Stroke =>
+        st.kind === 'line' ? { ...st, a: move(st.a), b: move(st.b) } : { ...st, c: move(st.c), r: st.r * k },
+    ),
     frame: { origin: move(origin), apex: move(apex), base: move(base), open },
-    disc: t.kind === 'syllabic' ? { c: middle, r: (HEIGHT / 2) * unit * FULL_SCALE } : undefined,
   };
 }
 
@@ -283,9 +326,24 @@ export function check(tiles: readonly Tile[], tokens: readonly Token[], unit = 1
     const [s, t] = local(p, d.frame);
     return s > slack && t > slack && s + t < 1 - slack;
   };
-  const outside = drawn.map((d) =>
-    d.disc ? [] : d.strokes.flatMap((st) => samples(st, 8)).filter((p) => !inside(p, d, -0.03)),
-  );
+  // Points of each glyph's marks that lie outside its own triangle, each with
+  // the room it needs: a mark must stay closer to its own triangle than to
+  // anyone else's lines, or it could be read as theirs.
+  const outside = drawn.map((d) => {
+    if (d.disc) return [];
+    const { origin, apex, base } = d.frame;
+    const own = (p: Point) =>
+      Math.min(distanceToSegment(p, origin, apex), distanceToSegment(p, apex, base), distanceToSegment(p, base, origin));
+    return d.strokes.flatMap((st) => {
+      const all = along(st);
+      const points = all.filter((p) => !inside(p, d, -0.03));
+      if (points.length === 0) return [];
+      // A mark that touches its triangle anywhere (the circle on the apex, the bar through it) is anchored.
+      const anchored = points.length < all.length;
+      const room = Math.max(unit / 2, anchored ? 0 : Math.min(...points.map(own)) * 1.1);
+      return points.map((p) => ({ p, room }));
+    });
+  });
   /** Points along the outline of a glyph's triangle (or its circle). */
   const outline = drawn.map((d) => {
     if (d.disc) return samples({ kind: 'circle', c: d.disc.c, r: d.disc.r }, 16);
@@ -295,12 +353,12 @@ export function check(tiles: readonly Tile[], tokens: readonly Token[], unit = 1
     );
   });
   /** True when a point is so close to a glyph's strokes that it could be taken for one of them. */
-  const near = (p: Point, d: Drawn) =>
+  const near = ({ p, room }: { p: Point; room: number }, d: Drawn) =>
     d.strokes.some((st) => {
-      if (st.kind === 'line') return distanceToSegment(p, st.a, st.b) < unit * 0.5;
-      if (st.kind === 'arc') return samples(st, 8).some((q) => distance(p, q) < unit * 0.5);
+      if (st.kind === 'line') return distanceToSegment(p, st.a, st.b) < room;
+      if (st.kind === 'arc') return samples(st, 8).some((q) => distance(p, q) < room);
       const gap = distance(p, st.c) - st.r;
-      return st.kind === 'dot' ? gap < unit * 0.5 : Math.abs(gap) < unit * 0.5;
+      return st.kind === 'dot' ? gap < room : Math.abs(gap) < room;
     });
   for (let a = 0; a < tiles.length; a++) {
     for (let b = 0; b < tiles.length; b++) {
@@ -312,7 +370,7 @@ export function check(tiles: readonly Tile[], tokens: readonly Token[], unit = 1
           tiles: [tiles[a].index, tiles[b].index],
         };
       }
-      if (outside[a].some((p) => inside(p, drawn[b], 0.03))) {
+      if (outside[a].some(({ p }) => inside(p, drawn[b], 0.03))) {
         return {
           rule: 'trespass',
           message: `The marks of ${label(tiles[a])} would land inside ${label(tiles[b])} and be read as part of it.`,
