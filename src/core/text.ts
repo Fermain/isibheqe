@@ -71,6 +71,8 @@ export interface Placed {
   at: Point;
   advance: number;
   frame: Frame;
+  /** In a tessellated layout, the number of the square the glyph sits in. */
+  cell?: number;
 }
 
 export interface Layout {

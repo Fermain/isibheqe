@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Tessellation check sheet</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0 auto;
+        max-width: 60rem;
+        padding: 1.5rem 1rem 3rem;
+        font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        color: #121110;
+        background: #fff;
+      }
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.5rem;
+      }
+      h2 {
+        margin: 1.75rem 0 0.5rem;
+        font-size: 1.05rem;
+        break-after: avoid;
+      }
+      p {
+        margin: 0.25rem 0 0.75rem;
+        max-width: 46rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th {
+        text-align: left;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #5e5950;
+        border-bottom: 1.5px solid #121110;
+        padding: 0.3rem 0.5rem;
+      }
+      td {
+        border-bottom: 1px solid #d8d2c4;
+        padding: 0.35rem 0.5rem;
+        vertical-align: middle;
+      }
+      tr {
+        break-inside: avoid;
+      }
+      td.word b {
+        display: block;
+        font-size: 1.05rem;
+      }
+      td.word span {
+        color: #5e5950;
+        font-size: 0.85rem;
+      }
+      td.glyphs svg {
+        display: block;
+        height: 4.6rem;
+        width: auto;
+        max-width: 100%;
+      }
+      td.ok {
+        width: 5.5rem;
+        white-space: nowrap;
+        font-size: 0.8rem;
+        color: #5e5950;
+      }
+      td.ok i {
+        display: inline-block;
+        width: 0.9rem;
+        height: 0.9rem;
+        margin-right: 0.2rem;
+        border: 1.5px solid #121110;
+        vertical-align: -0.15rem;
+      }
+      td.notes {
+        width: 22%;
+      }
+      @media print {
+        body {
+          padding: 0;
+          font-size: 11px;
+        }
+        td.glyphs svg {
+          height: 3.6rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tessellation check sheet</h1>
+    <p>
+      Common isiZulu words, each drawn twice: as the ordinary line, and tessellated. The small
+      letters under the tessellated form give the reading of each shape; a dot joins syllables
+      that share a square (read left, top, bottom, right). For proofreading the experiment on
+      the <code>tessellation</code> branch. This page is not part of the built site.
+    </p>
+    <p>
+      Things to look for: a word that falls apart into pieces; a cluster you cannot read back
+      in order; marks that collide or become too small; a lone glyph that sits oddly beside a
+      cluster.
+    </p>
+    <main id="sheet"></main>
+    <script type="module" src="/src/pages/check-sheet.ts"></script>
+  </body>
+</html>

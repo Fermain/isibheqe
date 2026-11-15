@@ -64,6 +64,9 @@
             <label class="check">
               <input type="checkbox" id="show-gloss" checked /> Show reading
             </label>
+            <label class="check">
+              <input type="checkbox" id="tessellate" /> Tessellate (experiment)
+            </label>
             <div id="colour-tools" class="colour-tools" role="group" aria-label="Colour">
               <span class="tool-label" aria-hidden="true">Colour</span>
               <div id="palette" class="palette"></div>
@@ -85,6 +88,12 @@
           <p id="paint-hint" class="note" hidden>
             Choose any enclosed part of a glyph to fill it. Colour is for art only and does not
             change what the text says. Choose the colour again to stop painting.
+          </p>
+          <p id="tessellate-note" class="note" hidden>
+            An experiment, after the coloured rendering of the script's name on Wikipedia. Each
+            syllable becomes a quarter of a square, chosen by its vowel, and is flattened to fit.
+            Inside a square, read left, top, bottom, right. That order and the flattening are this
+            site's own and are not part of the script as published.
           </p>
           <p id="status" class="status" role="status"></p>
         </div>

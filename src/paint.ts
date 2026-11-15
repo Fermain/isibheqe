@@ -146,8 +146,21 @@ export function paint(layout: Layout, fills: readonly Fill[], unit: number, scal
   return { canvas, owner, width, height, scale, spilled };
 }
 
-/** The glyph whose cell contains a point in layout coordinates, if any. */
+/** True when a point lies inside the triangle a glyph is built on. */
+function inFrame({ frame: { origin, apex, base } }: Placed, x: number, y: number): boolean {
+  const side = (a: typeof origin, b: typeof origin) => (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+  const [d1, d2, d3] = [side(origin, apex), side(apex, base), side(base, origin)];
+  return (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
+}
+
+/**
+ * The glyph at a point in layout coordinates, if any: the one whose triangle
+ * holds the point (several glyphs can share a tessellated square), or failing
+ * that the one whose cell does.
+ */
 export function glyphAt(layout: Layout, x: number, y: number, rowStep: number): Placed | undefined {
+  const inside = layout.glyphs.find((g) => inFrame(g, x, y));
+  if (inside) return inside;
   return layout.glyphs.find(
     (g) => x >= g.at.x && x < g.at.x + g.advance && y >= g.at.y && y < g.at.y + rowStep,
   );
