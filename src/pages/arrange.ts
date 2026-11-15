@@ -9,6 +9,7 @@ import {
   check,
   draw,
   lineUp,
+  party,
   rowHeight,
   settle,
   sideways,
@@ -35,6 +36,8 @@ const PAINT_SCALE = 3;
 
 interface Drag {
   index: number;
+  /** Token indexes of every glyph being carried: the one held and those that follow it. */
+  carried: number[];
   /** Where the pointer went down, in board units. */
   from: Point;
   list: Target[];
@@ -98,13 +101,6 @@ function targetShape(target: Target, tile: Tile, lay: BoardLayout): { d: string;
   const centre = drawn.disc
     ? { x: drawn.disc.c.x + dx, y: drawn.disc.c.y + dy }
     : { x: (origin.x + apex.x + base.x) / 3 + dx, y: (origin.y + apex.y + base.y) / 3 + dy };
-  if (target.insert) {
-    // Making room: a bar where the glyph's left edge would be, at the height of its row.
-    const x = target.k * STEP + dx;
-    const y = target.row * ROW + dy;
-    const w = STEP * 0.18;
-    return { d: `M${n(x - w)} ${n(y + w)}h${n(w * 2)}v${n(ROW - w * 2)}h${n(-w * 2)}z`, centre: { x, y: y + ROW / 2 } };
-  }
   if (drawn.disc) {
     const r = drawn.disc.r;
     return {
@@ -208,14 +204,25 @@ function adopt(next: Tile[]): void {
   state.tiles = next;
 }
 
-let press: { index: number; from: Point; clientX: number; clientY: number } | undefined;
+/**
+ * Whether a glyph moves by itself. The first glyph of a word always does:
+ * carrying the whole word along would leave the arrangement as it was.
+ */
+function movesAlone(index: number, altKey: boolean): boolean {
+  const tile = tileOf(index);
+  const leads = !!tile && !state.tiles.some((t) => t.word === tile.word && t.index < index);
+  return altKey || leads;
+}
+
+let press: { index: number; from: Point; clientX: number; clientY: number; alone: boolean } | undefined;
 
 surface.addEventListener('pointerdown', (event) => {
   const at = toBoard(event);
   if (!at || !view || state.brush) return;
   const glyph = glyphAt(view.lay, at.x, at.y, ROW);
   if (!glyph) return;
-  press = { index: glyph.index, from: at, clientX: event.clientX, clientY: event.clientY };
+  // Hold Alt (Option) to move this glyph without the ones after it.
+  press = { index: glyph.index, from: at, clientX: event.clientX, clientY: event.clientY, alone: movesAlone(glyph.index, event.altKey) };
   surface.setPointerCapture(event.pointerId);
 });
 
@@ -226,8 +233,9 @@ surface.addEventListener('pointermove', (event) => {
     state.selected = press.index;
     state.drag = {
       index: press.index,
+      carried: party(state.tiles, press.index, press.alone).map((t) => t.index),
       from: press.from,
-      list: targets(state.tiles, state.tokens, press.index),
+      list: targets(state.tiles, state.tokens, press.index, 1, press.alone),
       hot: -1,
       nearest: -1,
     };
@@ -236,9 +244,11 @@ surface.addEventListener('pointermove', (event) => {
   const drag = state.drag;
   const at = toBoard(event);
   if (!at || !view) return;
-  const lifted = surface.querySelector<SVGGElement>(`g[data-index="${drag.index}"]`);
-  lifted?.classList.add('lifted');
-  lifted?.setAttribute('transform', `translate(${n(at.x - drag.from.x)} ${n(at.y - drag.from.y)})`);
+  for (const index of drag.carried) {
+    const lifted = surface.querySelector<SVGGElement>(`g[data-index="${index}"]`);
+    lifted?.classList.add('lifted');
+    lifted?.setAttribute('transform', `translate(${n(at.x - drag.from.x)} ${n(at.y - drag.from.y)})`);
+  }
 
   // The nearest place, allowed or not; it is lit only if it is allowed.
   const tile = tileOf(drag.index)!;
@@ -281,7 +291,7 @@ surface.addEventListener('pointercancel', () => {
 });
 
 surface.addEventListener('keydown', (event) => {
-  if (event.ctrlKey || event.metaKey || event.altKey || state.tiles.length === 0) return;
+  if (event.ctrlKey || event.metaKey || state.tiles.length === 0) return;
   const order = state.tiles.map((t) => t.index);
   const at = order.indexOf(state.selected ?? -1);
   if (event.key === '[' || event.key === ']') {
@@ -300,25 +310,23 @@ surface.addEventListener('keydown', (event) => {
   if (!step) return;
   event.preventDefault();
   const [dc, dr] = step;
-  // Sideways: one step, else a whole base, else the same while making room. Up or down: one row,
-  // with a step to either side, since the triangle straight above or below points the other way.
-  const wanted: [k: number, row: number, insert: boolean][] =
+  // Sideways: one step, else a whole base. Up or down: one row, with a step to either side,
+  // since the triangle straight above or below points the other way.
+  const wanted: [k: number, row: number][] =
     dc === 0
       ? [
-          [tile.k, tile.row + dr, false],
-          [tile.k - 1, tile.row + dr, false],
-          [tile.k + 1, tile.row + dr, false],
+          [tile.k, tile.row + dr],
+          [tile.k - 1, tile.row + dr],
+          [tile.k + 1, tile.row + dr],
         ]
       : [
-          [tile.k + dc, tile.row, false],
-          [tile.k + dc * 2, tile.row, false],
-          [tile.k + dc, tile.row, true],
-          [tile.k + dc * 2, tile.row, true],
+          [tile.k + dc, tile.row],
+          [tile.k + dc * 2, tile.row],
         ];
-  const list = targets(state.tiles, state.tokens, tile.index);
+  const list = targets(state.tiles, state.tokens, tile.index, 1, movesAlone(tile.index, event.altKey));
   let refused: string | undefined;
-  for (const [k, row, insert] of wanted) {
-    const target = list.find((t) => t.k === k && t.row === row && t.insert === insert);
+  for (const [k, row] of wanted) {
+    const target = list.find((t) => t.k === k && t.row === row);
     if (target && !target.violation) {
       adopt(target.tiles);
       render();

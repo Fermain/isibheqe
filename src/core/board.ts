@@ -28,6 +28,9 @@
  *   order     reading each word left to right, and from the top where two
  *             glyphs start at the same step, must give the text
  *   apart     every glyph of a word is next to another glyph of that word
+ * Moving a glyph carries the rest of its word after it along, in formation,
+ * since a word is built from left to right; a glyph can also be moved alone.
+ *
  * Words follow each other left to right. After every move the board pulls
  * each glyph as far left as these rules allow, which closes any space left
  * behind and keeps words a base apart.
@@ -435,8 +438,6 @@ export function lineUp(tokens: readonly Token[], unit = 1): Tile[] {
 export interface Target {
   k: number;
   row: number;
-  /** True when room is made for the glyph here, pushing later glyphs along. */
-  insert: boolean;
   /** The arrangement this move gives, tidied. */
   tiles: Tile[];
   violation?: Violation;
@@ -444,40 +445,41 @@ export interface Target {
 
 const signature = (tiles: readonly Tile[]) => tiles.map((t) => `${t.k},${t.row},${t.large ? 1 : 0}`).join(' ');
 
-/**
- * Every place one glyph could be moved to: each step across its word and a
- * little beyond, one row beyond the board in each direction, with and
- * without making room. Each comes with the arrangement it would give and the
- * rule it would break, if any. Places where the lattice points the other way
- * are left out.
- */
-export function targets(tiles: readonly Tile[], tokens: readonly Token[], index: number, unit = 1): Target[] {
+/** The glyphs that move when one is moved: itself and, unless it moves alone, the rest of its word after it. */
+export function party(tiles: readonly Tile[], index: number, alone = false): Tile[] {
   const tile = tiles.find((t) => t.index === index);
   if (!tile) return [];
-  const mine = tiles.filter((t) => t.word === tile.word);
-  const first = Math.min(...mine.map((t) => t.k));
-  const last = Math.max(...mine.map((t) => t.k + span(t).steps));
-  const rows = tiles.map((t) => t.row);
-  const [top, bottom] = [Math.min(...rows) - 2, Math.max(...rows) + 1];
+  return tiles.filter((t) => t === tile || (!alone && t.word === tile.word && t.index > index));
+}
+
+/**
+ * Every place one glyph could be moved to, within a few steps and rows of
+ * where it is. The glyphs after it in its word come along in formation,
+ * unless it moves alone. Each place comes with the arrangement it would give
+ * and the rule it would break, if any. Places where the lattice points the
+ * wrong way, for the glyph or for those that follow it, are left out.
+ */
+export function targets(
+  tiles: readonly Tile[],
+  tokens: readonly Token[],
+  index: number,
+  unit = 1,
+  alone = false,
+): Target[] {
+  const tile = tiles.find((t) => t.index === index);
+  if (!tile) return [];
+  const moving = new Set(party(tiles, index, alone).map((t) => t.index));
   const seen = new Set([signature(tiles)]);
   const out: Target[] = [];
-  for (const insert of [false, true]) {
-    for (let k = first - 3; k <= last + 1; k++) {
-      for (let row = top; row <= bottom; row++) {
-        if (!fits({ ...tile, k, row }, tokens)) continue;
-        const moved = settle(
-          tiles.map((t) => {
-            if (t.index === index) return { ...t, k, row };
-            return insert && t.index > index && t.k >= k ? { ...t, k: t.k + 2 } : t;
-          }),
-          tokens,
-          unit,
-        );
-        const key = signature(moved);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push({ k, row, insert, tiles: moved, violation: check(moved, tokens, unit) });
-      }
+  for (let dk = -8; dk <= 8; dk++) {
+    for (let dr = -3; dr <= 3; dr++) {
+      const shifted = tiles.map((t) => (moving.has(t.index) ? { ...t, k: t.k + dk, row: t.row + dr } : t));
+      if (shifted.some((t) => moving.has(t.index) && !fits(t, tokens))) continue;
+      const moved = settle(shifted, tokens, unit);
+      const key = signature(moved);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ k: tile.k + dk, row: tile.row + dr, tiles: moved, violation: check(moved, tokens, unit) });
     }
   }
   return out;

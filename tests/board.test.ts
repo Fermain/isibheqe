@@ -43,7 +43,7 @@ describe('the arranging board', () => {
   it('only lets an upright glyph into a triangle that points its way', () => {
     const { tokens, tiles } = board('sasa');
     expect(check(tiles.map((t, i) => (i === 1 ? { ...t, k: t.k + 1 } : t)), tokens)?.rule).toBe('lattice');
-    expect(targets(tiles, tokens, tiles[1].index).every((t) => (t.k + t.row) % 2 !== 0)).toBe(true);
+    expect(targets(tiles, tokens, tiles[1].index).every((t) => Math.abs(t.k + t.row) % 2 === 1)).toBe(true);
   });
 
   it('stacks an i on an a, base to base, and an a on an i, point to point', () => {
@@ -106,10 +106,34 @@ describe('the arranging board', () => {
     expect(tiles[3].k - (tiles[2].k + 2)).toBeGreaterThanOrEqual(2);
   });
 
+  it('carries the rest of the word along when a glyph is moved, in formation', () => {
+    const { tokens, tiles } = board('sasikasi');
+    // make a diamond of the middle two, then move the first of them down a row
+    const diamond = settle(tiles.map((t, i) => (i === 2 ? { ...t, k: tiles[1].k, row: 1 } : t)), tokens);
+    expect(check(diamond, tokens)).toBeUndefined();
+    const down = targets(diamond, tokens, diamond[1].index).find((t) => !t.violation && t.row === diamond[1].row + 1)!;
+    expect(down).toBeDefined();
+    const dk = down.tiles[1].k - diamond[1].k;
+    for (const i of [2, 3]) {
+      expect(down.tiles[i].k - diamond[i].k).toBe(dk);
+      expect(down.tiles[i].row - diamond[i].row).toBe(1);
+    }
+    // the glyph before it stays where it was
+    expect(down.tiles[0]).toEqual(diamond[0]);
+  });
+
+  it('can move one glyph by itself', () => {
+    const { tokens, tiles } = board('sasasa');
+    const alone = targets(tiles, tokens, tiles[1].index, 1, true).filter((t) => !t.violation);
+    expect(alone.length).toBeGreaterThan(0);
+    for (const t of alone) expect(t.tiles[2].row).toBe(t.tiles[0].row);
+  });
+
   it('offers only moves that keep the text, and always offers some', () => {
     const { tokens, tiles } = board('sawubona');
     for (const tile of tiles) {
-      const legal = targets(tiles, tokens, tile.index).filter((t) => !t.violation);
+      // the first glyph moves alone: carrying the whole word would change nothing
+      const legal = targets(tiles, tokens, tile.index, 1, tile === tiles[0]).filter((t) => !t.violation);
       expect(legal.length).toBeGreaterThan(0);
       for (const t of legal) expect(check(t.tiles, tokens)).toBeUndefined();
     }
