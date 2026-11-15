@@ -72,6 +72,18 @@ describe('the arranging board', () => {
     expect(check(tiles.map((t, i) => (i === 1 ? { ...t, k: tiles[0].k + 1 } : t)), tokens)?.rule).toBe('trespass');
   });
 
+  it('lets a glyph snap next to a neighbour whose marks do not take up that triangle', () => {
+    // the circle of "ngi" sits on a point of the lattice; the triangle beside it is free
+    const { tiles } = board('ngiya');
+    expect(tiles.map((t) => t.k)).toEqual([0, 1]);
+    // the l line of "li" takes up the triangle on its left, so "sa" cannot nestle there
+    const l = board('sali');
+    expect(l.tiles[1].k - l.tiles[0].k).toBeGreaterThan(1);
+    expect(check(l.tiles.map((t, i) => (i === 1 ? { ...t, k: l.tiles[0].k + 1 } : t)), l.tokens)?.rule).toBe('trespass');
+    // but on the other side of "li" the triangle is free
+    expect(board('lisa').tiles.map((t) => t.k)).toEqual([0, 1]);
+  });
+
   it('refuses to cut a glyph off from its word', () => {
     const { tokens, tiles } = board('sikati');
     expect(check(put(tiles, 2, { row: 4 }), tokens)?.rule).toBe('apart');

@@ -21,8 +21,9 @@
  * The rules, all of them this site's own:
  *   lattice   an upright glyph sits only in a triangle that points its way
  *   taken     no two glyphs may overlap
- *   trespass  no mark outside its own triangle may land inside another
- *             glyph, or nearer to another glyph's lines than to its own
+ *   trespass  a mark outside its own triangle takes up the triangle of the
+ *             lattice it lies in, and no other glyph may sit there; nor may
+ *             a mark lie along another glyph's lines, where it would vanish
  *   closed    no line may close the open base of u, e or o
  *   order     reading each word left to right, and from the top where two
  *             glyphs start at the same step, must give the text
@@ -216,6 +217,24 @@ function distanceToSegment(p: Point, a: Point, b: Point): number {
   return distance(p, add(a, scale(ab, k)));
 }
 
+/** The triangle of the lattice a point lies in, and how far inside it the point is. */
+function cellAt(p: Point, unit: number): { k: number; row: number; depth: number } | undefined {
+  const row = Math.floor(p.y / rowHeight(unit));
+  const down = (p.y - row * rowHeight(unit)) / rowHeight(unit); // 0 at the top of the row, 1 at the bottom
+  const u = p.x / step(unit);
+  for (const k of [Math.floor(u) - 1, Math.floor(u)]) {
+    const pointsUp = (((k + row) % 2) + 2) % 2 === 0;
+    // How much narrower the triangle is at this height than at its base, on each side, in steps.
+    const narrowing = pointsUp ? 1 - down : down;
+    const [fromLeft, fromRight] = [u - (k + narrowing), k + 2 - narrowing - u];
+    if (fromLeft < 0 || fromRight < 0) continue;
+    const slant = Math.sin(Math.PI / 3) * step(unit);
+    const fromBase = (pointsUp ? 1 - down : down) * rowHeight(unit);
+    return { k, row, depth: Math.min(fromLeft * slant, fromRight * slant, fromBase) };
+  }
+  return undefined;
+}
+
 /** True when two tiles are next to each other: within two bases sideways, in touching rows. */
 function beside(a: Tile, b: Tile): boolean {
   const gap = Math.max(a.k, b.k) - Math.min(a.k + span(a).steps, b.k + span(b).steps);
@@ -296,32 +315,37 @@ export function check(
       [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map((k) => add(p, scale(sub(q, p), k))),
     );
   });
-  // Points of each glyph's marks that lie outside its own triangle, each with
-  // the room it needs: a mark must stay closer to its own triangle than to
-  // anyone else's lines, or it could be read as theirs.
+  // The points of each glyph's marks that lie outside its own triangle.
   const outside = drawn.map((d) => {
     if (d.disc) return [];
     const { origin, apex, base } = d.frame;
     const own = (p: Point) =>
       Math.min(distanceToSegment(p, origin, apex), distanceToSegment(p, apex, base), distanceToSegment(p, base, origin));
-    return d.strokes.flatMap((st) => {
-      const all = along(st);
-      const points = all.filter((p) => !inside(p, d, -0.03));
-      if (points.length === 0) return [];
-      // A mark that touches its triangle anywhere (the circle on the apex, the bar through it) is anchored.
-      const anchored = points.length < all.length;
-      const room = Math.max(unit / 2, anchored ? 0 : Math.min(...points.map(own)) * 1.1);
-      return points.map((p) => ({ p, room, by: st.by }));
-    });
+    return d.strokes.flatMap((st) =>
+      along(st)
+        .filter((p) => !inside(p, d, -0.03))
+        .map((p) => ({ p, by: st.by, loose: own(p) > unit * 1.5 })),
+    );
   });
-  const near = ({ p, room, by }: { p: Point; room: number; by?: string }, d: Drawn) =>
+  // The triangles of the lattice those marks take up: any they reach well into.
+  const taken = outside.map((points) => {
+    const cells = new Set<string>();
+    for (const { p } of points) {
+      const cell = cellAt(p, unit);
+      if (cell && cell.depth > unit * 0.6) cells.add(`${cell.k},${cell.row}`);
+    }
+    return cells;
+  });
+  /** True when a mark lies along one of another glyph's strokes. Where it joins its own triangle does not count. */
+  const along_ = ({ p, by, loose }: { p: Point; by?: string; loose: boolean }, d: Drawn) =>
+    loose &&
     d.strokes.some((st) => {
       // Two p bars may meet end to end, as they do in ordinary writing.
       if (by === 'p' && st.by === 'p') return false;
-      if (st.kind === 'line') return distanceToSegment(p, st.a, st.b) < room;
-      if (st.kind === 'arc') return samples(st, 8).some((q) => distance(p, q) < room);
+      if (st.kind === 'line') return distanceToSegment(p, st.a, st.b) < unit * 0.35;
+      if (st.kind === 'arc') return samples(st, 8).some((q) => distance(p, q) < unit * 0.35);
       const gap = distance(p, st.c) - st.r;
-      return st.kind === 'dot' ? gap < room : Math.abs(gap) < room;
+      return st.kind === 'dot' ? gap < unit * 0.35 : Math.abs(gap) < unit * 0.35;
     });
 
   for (let a = 0; a < tiles.length; a++) {
@@ -334,17 +358,21 @@ export function check(
           tiles: [tiles[a].index, tiles[b].index],
         };
       }
-      if (outside[a].some(({ p }) => inside(p, drawn[b], 0.03))) {
+      const upright = direction(tiles[b], tokens) === 'up' || direction(tiles[b], tokens) === 'down';
+      const inTheWay = upright
+        ? taken[a].has(`${tiles[b].k},${tiles[b].row}`)
+        : outside[a].some(({ p }) => inside(p, drawn[b], 0.03));
+      if (inTheWay) {
         return {
           rule: 'trespass',
-          message: `The marks of ${label(tiles[a])} would land inside ${label(tiles[b])} and be read as part of it.`,
+          message: `${label(tiles[b])} would sit where the marks of ${label(tiles[a])} are.`,
           tiles: [tiles[a].index, tiles[b].index],
         };
       }
-      if (outside[a].some((point) => near(point, drawn[b]))) {
+      if (outside[a].some((point) => along_(point, drawn[b]))) {
         return {
           rule: 'trespass',
-          message: `The marks of ${label(tiles[a])} would sit so close to ${label(tiles[b])} that they could be read as part of it.`,
+          message: `A mark of ${label(tiles[a])} would lie along a line of ${label(tiles[b])} and could not be seen.`,
           tiles: [tiles[a].index, tiles[b].index],
         };
       }
@@ -361,7 +389,8 @@ export function check(
       const covered = base.filter((p) =>
         lines.some((st) => st.kind === 'line' && distanceToSegment(p, st.a, st.b) < unit / 4),
       );
-      if (covered.length >= 4) {
+      // Even a line along part of the open side makes the vowel doubtful.
+      if (covered.length >= 2) {
         return {
           rule: 'closed',
           message: `${label(tiles[a])} would close the open side of ${label(tiles[b])}, which would then read as a different vowel.`,
