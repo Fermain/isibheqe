@@ -60,6 +60,11 @@ chart and 2016 booklet, not an official table. The booklet confirms the stop ser
 (pha, pa, bha, ba and mpha, mpa, mbha, mba); other clusters are by analogy. Corrections from people who write the script are welcome.
 Punctuation and the null vowel (for consonants with no vowel) are not drawn yet.
 
+The isiXhosa reader in `src/input/xhosa.ts` is an experiment. It starts from the isiZulu table
+and applies the script's feature rules to the spellings isiXhosa adds (ty, tyh, dy, ths, thsh,
+dz, rh, gr, kr, tl, ng', nh, nyh). No published isiXhosa chart for the script was used; the
+header of that file says how sure each group is.
+
 ## Development
 
 ```sh
@@ -71,7 +76,8 @@ pnpm build    # static site in dist/
 
 - `src/core/` turns syllables into strokes and SVG. It has no dependencies and does not need a
   browser.
-- `src/input/zulu.ts` holds the isiZulu spelling rules.
+- `src/input/nguni.ts` reads ordinary spelling into syllables; `zulu.ts` and `xhosa.ts` beside it
+  hold each language's table of consonant spellings.
 - `index.html` with `src/main.ts` is the Write page; `learn.html` and `about.html` are the
   other two, with their scripts in `src/pages/`.
 - `src/ui.ts`, `src/keys.ts`, `src/paint.ts` and `src/style.css` are shared.

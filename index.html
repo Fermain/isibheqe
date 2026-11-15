@@ -99,9 +99,21 @@
         </div>
 
         <div id="panel-text" class="panel" role="tabpanel" aria-labelledby="tab-text">
-          <label for="latin">isiZulu in ordinary spelling</label>
-          <textarea id="latin" rows="3" spellcheck="false" autocapitalize="off"></textarea>
+          <div class="language">
+            <label for="language">Language</label>
+            <select id="language">
+              <option value="zu">isiZulu</option>
+              <option value="xh">isiXhosa (experiment)</option>
+            </select>
+          </div>
+          <label for="latin" id="latin-label">isiZulu in ordinary spelling</label>
+          <textarea id="latin" rows="3" spellcheck="false" autocapitalize="off" lang="zu"></textarea>
           <p id="unread" class="warning" hidden></p>
+          <p id="experimental" class="note" hidden>
+            The isiXhosa reading is an experiment. It applies the script's rules to isiXhosa
+            spelling by analogy with isiZulu, and has not been checked by people who write the
+            script. <i>tl</i>, <i>nh</i> and <i>nyh</i> are the least certain.
+          </p>
           <p class="note">
             Punctuation is left out for now. Write <kbd>m'</kbd> or <kbd>n'</kbd> for a nasal that
             is a syllable by itself. For other languages, or to adjust a syllable by hand,

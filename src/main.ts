@@ -9,6 +9,8 @@ import {
   type Layout,
   type Token,
 } from './core/text';
+import type { Transcription } from './input/nguni';
+import { transcribeXhosa } from './input/xhosa';
 import { transcribeZulu } from './input/zulu';
 import { KEY_FOR_SYMBOL, KEY_GROUPS, KEY_NAMES, PHYSICAL_KEYS } from './keys';
 import { glyphAt, paint, toPixel, type Fill, type Painted } from './paint';
@@ -16,8 +18,16 @@ import { $, escapeHtml, glyphSvg, reading, spelled, tokenFor } from './ui';
 
 type Mode = 'text' | 'sound';
 
+/** The languages that can be typed in ordinary spelling. */
+const LANGUAGES = {
+  zu: { name: 'isiZulu', read: transcribeZulu, sample: 'Sawubona mhlaba' },
+  xh: { name: 'isiXhosa', read: transcribeXhosa, sample: 'Molo mhlaba' },
+} satisfies Record<string, { name: string; read: (text: string) => Transcription; sample: string }>;
+type Language = keyof typeof LANGUAGES;
+
 const state = {
   mode: 'text' as Mode,
+  language: 'zu' as Language,
   text: 'Sawubona mhlaba',
   textTokens: [] as Token[],
   unread: [] as string[],
@@ -75,7 +85,7 @@ function render(): void {
   if (list.length === 0) {
     view = undefined;
     surface.innerHTML = `<p class="empty">${
-      state.mode === 'text' ? 'Type some isiZulu below.' : 'Choose a vowel below to begin.'
+      state.mode === 'text' ? `Type some ${LANGUAGES[state.language].name} below.` : 'Choose a vowel below to begin.'
     }</p>`;
   } else {
     const lay = layout(list, unit, maxWidth, state.gloss);
@@ -98,7 +108,7 @@ function render(): void {
   const unread = $('unread');
   if (state.mode === 'text' && state.unread.length > 0) {
     const runs = [...new Set(state.unread)].map((r) => `“${escapeHtml(r)}”`).join(', ');
-    unread.innerHTML = `Not read as isiZulu and left out: ${runs}.`;
+    unread.innerHTML = `Not read as ${LANGUAGES[state.language].name} and left out: ${runs}.`;
     unread.hidden = false;
   } else {
     unread.hidden = true;
@@ -248,7 +258,7 @@ const textBox = $<HTMLTextAreaElement>('latin');
 
 function readText(): void {
   state.text = textBox.value;
-  const result = transcribeZulu(state.text);
+  const result = LANGUAGES[state.language].read(state.text);
   state.textTokens = result.tokens;
   state.unread = result.unread;
   state.fills.text = state.fills.text.filter((f) => isGlyph(result.tokens[f.index]));
@@ -260,6 +270,24 @@ textBox.addEventListener('input', () => {
   state.selected = null;
   render();
 });
+
+const languageBox = $<HTMLSelectElement>('language');
+
+function setLanguage(language: Language): void {
+  // Swap the sample greeting along with the language, but never typed text.
+  if (textBox.value === LANGUAGES[state.language].sample) textBox.value = LANGUAGES[language].sample;
+  state.language = language;
+  const { name } = LANGUAGES[language];
+  $('tab-text').textContent = `Type ${name}`;
+  $('latin-label').textContent = `${name} in ordinary spelling`;
+  $('experimental').hidden = language === 'zu';
+  textBox.lang = language;
+  readText();
+  state.selected = null;
+  render();
+}
+
+languageBox.addEventListener('change', () => setLanguage(languageBox.value as Language));
 
 $('continue-by-sound').addEventListener('click', () => {
   state.soundTokens = structuredClone(state.textTokens);
